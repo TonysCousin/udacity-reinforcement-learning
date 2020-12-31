@@ -17,8 +17,8 @@ class QNetwork(nn.Module):
         self.seed = torch.manual_seed(seed)
         
         ### John's code:
-        fc2_size = 8*state_size
-        fc3_size = 8*state_size
+        fc2_size = 10*state_size
+        fc3_size =  6*state_size
         
         self.fc1 = nn.Linear(state_size, fc2_size)
         self.fc2 = nn.Linear(fc2_size, fc3_size)
@@ -39,6 +39,5 @@ class QNetwork(nn.Module):
         
         #x = self.dropout(x)
         x = self.fc3(x) #no activation function
-        #x = F.leaky_relu(self.fc3(x), negative_slope=0.01)
         
         return x
