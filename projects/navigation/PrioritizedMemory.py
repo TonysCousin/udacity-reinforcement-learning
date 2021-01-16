@@ -1,4 +1,4 @@
-# This class is from https://github.com/rlcode/per
+# This class is based on code from https://github.com/rlcode/per
 
 import random
 import numpy as np
@@ -13,9 +13,10 @@ from SumTree import SumTree
 
 class PrioritizedMemory:  # stored as ( s, a, r, s_ ) in SumTree
     e = 0.01
-    a = 0.6
+    alpha = 0.6
+    alpha_incr_per_sample = 0.0001
     beta = 0.4
-    beta_increment_per_sampling = 0.001
+    beta_incr_per_sample = 0.0001
 
     def __init__(self, capacity):
         self.tree = SumTree(capacity)
@@ -27,7 +28,31 @@ class PrioritizedMemory:  # stored as ( s, a, r, s_ ) in SumTree
 
 
     def _get_priority(self, error):
-        return (np.abs(error) + self.e) ** self.a
+        return (np.abs(error) + self.e) ** self.alpha
+
+
+    def set_alpha(self, alpha):
+        self.alpha = alpha
+
+
+    def set_alpha_increment(self, increment):
+        self.alpha_incr_per_sample = increment
+
+
+    def get_alpha(self):
+        return self.alpha
+
+
+    def set_beta(self, beta):
+        self.beta = beta
+
+
+    def set_beta_increment(self, increment):
+        self.beta_incr_per_sample = increment
+
+
+    def get_beta(self):
+        return self.beta
 
 
     # Returns the maximum error value of all experiences stored in the buffer.
@@ -35,7 +60,11 @@ class PrioritizedMemory:  # stored as ( s, a, r, s_ ) in SumTree
     #     SumTree structure stores priority, but that is not what is being requested here.
 
     def get_max_error(self):
-        return self.tree.get_max_priority() ** (1.0/self.a) - self.e
+        #print("Memory.get_max_error: max = {}, a = {:.3f}, e = {:.5f}".format(self.tree.get_max_priority(), self.a, self.e))
+        error = self.tree.get_max_priority()
+        if self.alpha > self.e:
+            error = error ** (1.0/self.alpha) - self.e
+        return error
 
 
     # Adds a data sample to the PER database.
@@ -45,7 +74,7 @@ class PrioritizedMemory:  # stored as ( s, a, r, s_ ) in SumTree
 
     def add(self, error, sample):
         p = self._get_priority(error)
-        #print("Memory.add: p = ", p) ##### jas
+        #print("\nMemory.add: p = ", p) ##### jas
         #print("            sample = ", sample)
         self.tree.add(p, sample)
 
@@ -62,7 +91,8 @@ class PrioritizedMemory:  # stored as ( s, a, r, s_ ) in SumTree
         segment = self.tree.total() / n
         priorities = []
 
-        self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])
+        self.alpha = np.min([1.0, self.alpha + self.alpha_incr_per_sample])
+        self.beta  = np.min([1.0, self.beta  + self.beta_incr_per_sample])
         #print("Memory.sample: n = ", n, ", segment = ", segment) ### jas
 
         for i in range(n):
@@ -78,7 +108,8 @@ class PrioritizedMemory:  # stored as ( s, a, r, s_ ) in SumTree
             idxs.append(idx)
 
         sampling_probabilities = priorities / self.tree.total()
-        is_weight = np.power(self.tree.n_entries * sampling_probabilities, -self.beta)
+        #print("Memory.sample: sampling_probs = ", sampling_probabilities)
+        is_weight = np.power(len(self.tree) * sampling_probabilities, -self.beta)
         is_weight /= is_weight.max()
 
         return batch, idxs, is_weight
@@ -89,7 +120,7 @@ class PrioritizedMemory:  # stored as ( s, a, r, s_ ) in SumTree
     # errors - a list of the error values to be stored with the objects indicated by idxs (updated priorities)
 
     def update(self, idxs, errors):
-        #print("Memory.update: idxs = ", idxs)
+        #print("\nMemory.update: idxs = ", idxs)
         #print("               errors = ", errors)
         for i, e in zip(idxs, errors):
             #print("Memory.update: i = ", i)

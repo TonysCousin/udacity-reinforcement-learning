@@ -1,4 +1,4 @@
-# This class is from https://github.com/rlcode/per
+# This class is based on code from https://github.com/rlcode/per
 
 import numpy
 
@@ -62,8 +62,9 @@ class SumTree:
 
 
     # Returns the maximum priority value of all experiences stored in the tree
+    # NB: we only want to look at the leaf nodes, no parents
     def get_max_priority(self):
-        return max(self.tree)
+        return max(self.tree[-self.capacity:])
 
 
     # Stores a new data object along with its priority.
@@ -72,7 +73,7 @@ class SumTree:
 
     def add(self, p, data):
         idx = self.write + self.capacity - 1
-        #print("SumTree.add: idx = ", idx) ### jas
+        #print("SumTree.add: idx = {}, p = {:.3f}".format(idx, p)) ### jas
 
         self.data[self.write] = data
         self.update(idx, p)
@@ -90,6 +91,7 @@ class SumTree:
     # p - the new value of priority to be assigned to the node
 
     def update(self, idx, p):
+        #print("SumTree.update: idx = {}, p = {:.3f}".format(idx, p))
         change = p - self.tree[idx]
 
         self.tree[idx] = p
