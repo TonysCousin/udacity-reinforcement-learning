@@ -23,6 +23,10 @@ class SumTree:
         self.data = numpy.zeros(capacity, dtype=object)
         self.n_entries = 0
 
+    def __len__(self):
+        return self.n_entries
+
+
     # update to the root node
     def _propagate(self, idx, change):
         parent = (idx - 1) // 2
@@ -32,6 +36,7 @@ class SumTree:
 
         if parent != 0:
             self._propagate(parent, change)
+
 
     # find sample on leaf node
     def _retrieve(self, idx, s):
@@ -54,6 +59,11 @@ class SumTree:
     def total(self):
         #print("SumTree.total: returning ", self.tree[0]) ### jas
         return self.tree[0]
+
+
+    # Returns the maximum priority value of all experiences stored in the tree
+    def get_max_priority(self):
+        return max(self.tree)
 
 
     # Stores a new data object along with its priority.
