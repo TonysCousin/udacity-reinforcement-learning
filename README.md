@@ -1,8 +1,8 @@
 # udacity-reinforcement-learning
 This repository contains files used for my Udacity Deep Reinforcement Learning nano-degree program.
 The coursework is largely done in Jupyter notebooks. The several subdirectories include files for
-various lessons and homework assignments. In addition, the 'projects' subdirectory holds the large
-self-directed projects required for this project.  Those projects are highlighted here.
+various lessons and homework assignments. In addition, the `projects` subdirectory holds the large
+self-directed projects required for this course.  Those projects are highlighted here.
 
 ## Project 1 - Navigation
 
