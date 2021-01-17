@@ -16,12 +16,15 @@ This project explores several enhancements to the vanilla DQN algorithm ([origin
 - Prioritized experience replay (PER) (https://arxiv.org/pdf/1511.05952.pdf)
 - Double DQN (https://arxiv.org/pdf/1509.06461.pdf)
 
+The project report can be found in the Jupyter notebook, _Report.ipynb_ , located in this project directory.
+
 ### To use this code
 
 Code for this project lives in two places within this GitHub directory.  The first is the Jupyter notebook,
-_Navigation.ipynb_ , with some support code in the flat files, 'PrioritizedMemory.py' and 'SumTree.py',
+_Navigation.ipynb_ , with some support code in the flat files, `PrioritizedMemory.py` and `SumTree.py`,
 which, together, provide the bulk of the PER capability.  So the first step in using it is to clone this
-repo (https://github.com/TonysCousin/udacity-reinforcement-learning).
+repo (https://github.com/TonysCousin/udacity-reinforcement-learning).  Within that repo, go to the
+`projects/navigation` directory to find all of the relevant files, including this readme.
 
 
 The environment needed to run the code can be set up in a few minutes.  Beyond installing Jupyter Notebook,
@@ -34,6 +37,6 @@ run the entire notebook.  It will train the agent given the hyperparameters that
 show a plot of its training history.
 
 Note that also included in this repository are several checkpoints that hold pre-trained models with various
-DQN features, indicated by their filenames.  The checkpoints are stored in *.pt files.  It should be a
+DQN features, indicated by their filenames.  The checkpoints are stored in `*.pt` files.  It should be a
 simple exercise to slightly modify the notebook code to read in one of the checkpoint files and use that 
 model for inference purposes if desired.

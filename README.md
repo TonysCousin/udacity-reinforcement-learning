@@ -8,7 +8,7 @@ self-directed projects required for this course.  Those projects are highlighted
 
 This project uses Deep Q Learning to develop an agent that navigates a flat, rectangular world in
 search of bananas.  [It is described in more detail here](projects/navigation/navigation_readme.md),
-and all of the project files can be found in that same subdirectory ('projects/navigation').
+and all of the project files can be found in that same subdirectory (`projects/navigation`).
 
 ## Project 2
 
