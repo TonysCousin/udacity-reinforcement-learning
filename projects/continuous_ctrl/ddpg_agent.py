@@ -22,7 +22,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class DdpgAgent():
     """Interacts with and learns from the environment."""
     
-    def __init__(self, state_size, action_size, random_seed, batch_size=32):
+    def __init__(self, state_size, action_size, random_seed, batch_size=32, learn_every=4):
         """Initialize an Agent object.
         
         Params
@@ -35,6 +35,11 @@ class DdpgAgent():
         self.action_size = action_size
         self.seed = random.seed(random_seed)
         self.batch_size = batch_size
+
+        ##### Added by John to help training
+        self.accumulated_reward = 0.0
+        self.learn_control = 0
+        self.learn_every = learn_every
 
         layer1_units = 128
         layer2_units = 48
@@ -57,11 +62,31 @@ class DdpgAgent():
     
     def step(self, state, action, reward, next_state, done):
         """Save experience in replay memory, and use random sample from buffer to learn."""
+
+        ############################
+        # This section added by John
+        # The idea is to weight the reward based on a trajectory, not just a single time step, which should
+        # favor trajectories that follow the target rather than passing it in the opposite direction.
+        ############################
+
+        reward *= 0.1 # suggestion per paper "Benchmarking Deep Reinforcement Learning for Continous Control" (Duan, 2016)
+        #if done:
+        #    self.accumulated_reward = 0.0
+        #else:
+        #    self.accumulated_reward += reward
+
+        ##### End section added by John, except that next line replaces instantaneous reward with accumulated reward
+
+
         # Save experience / reward
+        #self.memory.add(state, action, self.accumulated_reward, next_state, done)
         self.memory.add(state, action, reward, next_state, done)
 
+
+        ##### John modified this section for infrequent learning updates
         # Learn, if enough samples are available in memory
-        if len(self.memory) > self.batch_size:
+        self.learn_control += 1
+        if len(self.memory) > self.batch_size  and  self.learn_control % self.learn_every == 0:
             experiences = self.memory.sample()
             self.learn(experiences, GAMMA)
 
@@ -112,17 +137,19 @@ class DdpgAgent():
         # Minimize the loss
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic_local.parameters(), 1) #John added per lesson suggestion; gradient clipping
         self.critic_optimizer.step()
 
         # ---------------------------- update actor ---------------------------- #
 
         # Compute actor loss
         actions_pred = self.actor_local(states)
-        actor_loss = -self.critic_local(states, actions_pred).mean()
+        actor_loss = -self.critic_local(states, actions_pred).mean() #can't detach() here
 
         # Minimize the loss
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor_local.parameters(), 1) #John added
         self.actor_optimizer.step()
 
         # ----------------------- update target networks ----------------------- #
