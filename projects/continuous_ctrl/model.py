@@ -1,3 +1,6 @@
+# This code is a slight modification from code provided by the Udacity instructor team.
+#
+
 import numpy as np
 
 import torch

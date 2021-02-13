@@ -1,3 +1,6 @@
+# This code is a slight modification of code provided by the Udacity instructor team.
+#
+
 import numpy as np
 import random
 import copy
@@ -22,7 +25,8 @@ class DdpgAgent():
     """Interacts with and learns from the environment."""
     
     def __init__(self, state_size, action_size, random_seed, batch_size=32,
-                 noise_decay=1.0, learn_every=20, learn_iter=10):
+                 noise_decay=1.0, learn_every=20, learn_iter=10,
+                 actor_file=None, critic_file=None):
         """Initialize an Agent object.
         
         Params
@@ -35,26 +39,40 @@ class DdpgAgent():
         self.action_size = action_size
         self.seed = random.seed(random_seed)
         self.batch_size = batch_size
-
-        ##### Added by John to help training
         self.noise_mult = 1.0
         self.noise_decay = noise_decay
         self.learn_control = 0
         self.learn_every = learn_every
         self.learn_iterations = learn_iter
+        self.inference = False
+
+        ##################################
+        # Define the NNs. Keep the layer structure identical in all 4, but the critic will merge in the outputs of the actor.
+        ##################################
 
         # was using 128, 48
         layer1_units = 400
         layer2_units = 256
 
         # Actor Network (w/ Target Network)
-        self.actor_local  = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units).to(device)
-        self.actor_target = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units).to(device)
+        self.actor_local  = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units)
+        self.actor_target = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units)
+        if actor_file != None:
+            self.actor_local.load_state_dict(torch.load(actor_file))
+            self.actor_target.load_state_dict(torch.load(actor_file))
+            self.inference = True
+        self.actor_local.to(device)
+        self.actor_target.to(device)
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
 
         # Critic Network (w/ Target Network)
         self.critic_local  = Critic(state_size, action_size, random_seed, fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
         self.critic_target = Critic(state_size, action_size, random_seed, fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
+        if critic_file != None:
+            self.critic_local.load_state_dict(torch.load(critic_file))
+            self.critic_target.load_state_dict(torch.load(critic_file))
+        self.critic_local.to(device)
+        self.critic_target.to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
 
         # Noise process
@@ -65,6 +83,10 @@ class DdpgAgent():
     
     def step(self, state, action, reward, next_state, done):
         """Save experience in replay memory, and use random sample from buffer to learn."""
+
+        # don't need to do anything if this is an inference run
+        if self.inference:
+            return
 
         # Save experience / reward
         self.memory.add(state, action, reward, next_state, done)
@@ -83,12 +105,13 @@ class DdpgAgent():
         self.actor_local.eval()
         with torch.no_grad():
             action = self.actor_local(state).cpu().data.numpy()
-        self.actor_local.train()
 
-        # John added noise decay
-        if add_noise:
-            action += self.noise.sample() * self.noise_mult
-            self.noise_mult *= self.noise_decay
+        # if we are training then set the model back to training mode and add noise to the actions
+        if not self.inference:
+            self.actor_local.train()
+            if add_noise:
+                action += self.noise.sample() * self.noise_mult
+                self.noise_mult *= self.noise_decay
 
         return np.clip(action, -1, 1)
 
