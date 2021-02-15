@@ -12,22 +12,14 @@ The agent's possible actions comprise a vector of 4 real numbers in [-1, 1], whi
 of the two arm joints.  The environment provides a state vector of 33 real values representing the sphere's
 position and velocity as well as the positions, velocities and accelerations of each arm segment.  The arm is
 not spatially constrained, and can fold back on itself (i.e. both segments can exist in the same space).  The
-agent collects a reward of +0.1 point for each time step that the arm's end is "within the target vicinity".
+agent collects a small reward for each time step that the arm's end is "within the target vicinity".
 Empirical evidence suggests that this means the end is within the target sphere.  The goal is to achieve an
 average score of +30.0 or more over 100 consecutive episodes (there is no guidance on how long these episodes
--- trajectories -- must be).
+must be).  My observation shows that the nominal reward is 0.04 per time step within the sphere, so for an
+episode of 1000 time steps the maximum possible reward would be 40 points.
 
 
-**--- NEED TO MODIFY BELOW ---**
-
-
-This project explores several enhancements to the vanilla DQN algorithm ([originally described here](http://files.davidqiu.com//research/nature14236.pdf)), including 
-- Fixed Q targets
-- Experience replay buffer
-- Prioritized experience replay (PER) (https://arxiv.org/pdf/1511.05952.pdf)
-- Double DQN (https://arxiv.org/pdf/1509.06461.pdf)
-
-The project report can be found in the Jupyter notebook, _Report.ipynb_ , located in this project directory.
+I use the DDPG algorithm to train the agent.  The project report with additional details can be found in the Jupyter notebook, _Report.ipynb_ , located in this project directory.
 
 ### To use this code
 
