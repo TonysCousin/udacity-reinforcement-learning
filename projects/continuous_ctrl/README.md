@@ -1,5 +1,7 @@
 # Continuous Control Project
 
+![Reacher](Reacher-snapshot.png)
+
 Within the Udacity Deep Reinforcement Learning nano-degree program, Continuous Control is the second major
 project for students to build on their own.  The project is to build and train an agent using any policy-based techniques
 to control the Reacher two-jointed robot arm in the Unity ML Agents environment.  The object is to move the arm
@@ -15,7 +17,9 @@ not spatially constrained, and can fold back on itself (i.e. both segments can e
 agent collects a small reward for each time step that the arm's end is "within the target vicinity".
 Empirical evidence suggests that this means the end is within the target sphere.  The goal is to achieve an
 average score of +30.0 or more over 100 consecutive episodes (there is no guidance on how long these episodes
-must be).  My observation shows that the nominal reward is 0.04 per time step within the sphere, so for an
+must be).  **Note:** The [ML Agents site](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Learning-Environment-Examples.md#reacher) indicates the reward is 0.1 point per time step near the target.
+However, this documentation is inconsistent with the version of code being used here.
+My observation of the operating agent shows that the reward is actually 0.04 per time step within the sphere, so for an
 episode of 1000 time steps the maximum possible reward would be 40 points.
 
 
@@ -23,20 +27,32 @@ I use the DDPG algorithm to train the agent.  The project report with additional
 
 ### To use this code
 
-Code for this project lives in two places within this GitHub directory.  The first is the Jupyter notebook,
+The environment needed to run the code can be set up in a few minutes.  Beyond installing Jupyter Notebook, here are the steps
+(use of conda is optional, but Python 3.6 is mandatory):
+```
+conda create --name drlnd python=3.6
+conda activate drlnd
+```
+
+Next, pick a location to clone this repository, clone it, install its dependencies, and set up the Jupyter kernel:
+```
+cd <location>
+git clone https://github.com/TonysCousin/udacity-reacher.git .
+pip install .
+python -m ipykernel install --user --name drlnd --display-name "drlnd"
+```
+ 
+Finally, install the Unity ML-Agents environment pre-built for this project (which means you don't need to install Unity directly).
+Download the environment [from here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Reacher/one_agent/Reacher_Linux.zip),
+place it in your project directory and unzip it.
+
+Code for this project lives in two places within this directory.  The first is the Jupyter notebook,
 _cont-ctrl-project.ipynb_ , with the main logic in the flat files, `ddpg_agent.py` and `model.py`.
-So the first step in using it is to clone [this repo](https://github.com/TonysCousin/udacity-reacher). 
-
-The environment needed to run the code can be set up in a few minutes.  Beyond installing Jupyter Notebook,
-[NumPy](http://www.numpy.org) and the [Unity ML agents](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Installation.md),
-it will require installation of some dependencies from OpenAI Gym described in
-https://github.com/udacity/deep-reinforcement-learning#dependencies.
-
-Once these dependencies are in place, simply open the _cont-ctrl-project_ notebook, select the drlnd kernel, and
+Once these dependencies are in place, simply open the notebook, select the drlnd kernel, and
 run the entire notebook.  It will train the agent given the hyperparameters that appear in the code, and
 show a plot of its training history.
 
 Also included in this repository are checkpoint files that hold the pre-trained models, one for the actor network
-and one for the critic network.  The final cell in the notebook will read in these files and play an inference
+and one for the critic network.  The final two cells in the notebook will read in these files and play an inference
 episode with the trained models.
 

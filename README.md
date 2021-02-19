@@ -10,9 +10,11 @@ This project uses Deep Q Learning to develop an agent that navigates a flat, rec
 search of bananas.  [It is described in more detail here](projects/navigation/README.md),
 and all of the project files can be found in that same subdirectory (`projects/navigation`).
 
-## Project 2
+## Project 2 - Continuous Control
 
-(incomplete)
+This project uses the DDPG policy method to train a two-arm robot to follow a moving target.
+[It is described further here](projects/continous_ctrl/README.md), with all project files being
+located in that subdirectory (`projects/continuous_ctrl`).
 
 ## Project 3
 

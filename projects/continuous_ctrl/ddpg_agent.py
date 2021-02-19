@@ -1,8 +1,9 @@
-# This code is a slight modification of code provided by the Udacity instructor team.
-#
+# This code is based on code provided by Udacity instructor staff
+# for the DRL nanodegree program.
 
 import numpy as np
 import random
+from numpy.random import default_rng
 import copy
 from collections import namedtuple, deque
 
@@ -25,54 +26,44 @@ class DdpgAgent():
     """Interacts with and learns from the environment."""
     
     def __init__(self, state_size, action_size, random_seed, batch_size=32,
-                 noise_decay=1.0, learn_every=20, learn_iter=10,
-                 actor_file=None, critic_file=None):
+                 noise_decay=1.0, learn_every=20, learn_iter=10):
         """Initialize an Agent object.
         
         Params
         ======
-            state_size (int): dimension of each state
-            action_size (int): dimension of each action
-            random_seed (int): random seed
+            state_size (int):     dimension of each state
+            action_size (int):    dimension of each action
+            random_seed (int):    random seed
+            batch_size (int):     the size of each minibatch used for learning
+            noise_decay (float):  multiplier on the magnitude of noise; decay is applied each time step (must be <= 1.0)
+            learn_every (int):    number of time steps between learning sessions
+            learn_iter (int):     number of learning iterations that get run during each learning session
         """
+
         self.state_size = state_size
         self.action_size = action_size
-        self.seed = random.seed(random_seed)
+        random.seed(random_seed)
         self.batch_size = batch_size
+
+        ##### Added by John to help training
         self.noise_mult = 1.0
-        self.noise_decay = noise_decay
+        self.noise_decay = min(noise_decay, 1.0) #guarantee that this won't make the noise grow
         self.learn_control = 0
         self.learn_every = learn_every
         self.learn_iterations = learn_iter
-        self.inference = False
-
-        ##################################
-        # Define the NNs. Keep the layer structure identical in all 4, but the critic will merge in the outputs of the actor.
-        ##################################
 
         # was using 128, 48
         layer1_units = 400
         layer2_units = 256
 
         # Actor Network (w/ Target Network)
-        self.actor_local  = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units)
-        self.actor_target = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units)
-        if actor_file != None:
-            self.actor_local.load_state_dict(torch.load(actor_file))
-            self.actor_target.load_state_dict(torch.load(actor_file))
-            self.inference = True #indicate that we will only do inference if this file is pre-loaded
-        self.actor_local.to(device)
-        self.actor_target.to(device)
+        self.actor_local  = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units).to(device)
+        self.actor_target = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units).to(device)
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
 
         # Critic Network (w/ Target Network)
-        self.critic_local  = Critic(state_size, action_size, random_seed, fcs1_units=layer1_units, fc2_units=layer2_units)
-        self.critic_target = Critic(state_size, action_size, random_seed, fcs1_units=layer1_units, fc2_units=layer2_units)
-        if critic_file != None:
-            self.critic_local.load_state_dict(torch.load(critic_file))
-            self.critic_target.load_state_dict(torch.load(critic_file))
-        self.critic_local.to(device)
-        self.critic_target.to(device)
+        self.critic_local  = Critic(state_size, action_size, random_seed, fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
+        self.critic_target = Critic(state_size, action_size, random_seed, fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
 
         # Noise process
@@ -83,10 +74,6 @@ class DdpgAgent():
     
     def step(self, state, action, reward, next_state, done):
         """Save experience in replay memory, and use random sample from buffer to learn."""
-
-        # don't need to do anything if this is an inference run
-        if self.inference:
-            return
 
         # Save experience / reward
         self.memory.add(state, action, reward, next_state, done)
@@ -105,18 +92,20 @@ class DdpgAgent():
         self.actor_local.eval()
         with torch.no_grad():
             action = self.actor_local(state).cpu().data.numpy()
+        self.actor_local.train()
 
-        # if we are training then set the model back to training mode and add noise to the actions
-        if not self.inference:
-            self.actor_local.train()
-            if add_noise:
-                action += self.noise.sample() * self.noise_mult
-                self.noise_mult *= self.noise_decay
+        # John added noise decay
+        if add_noise:
+            action += self.noise.sample() * self.noise_mult
+            self.noise_mult *= self.noise_decay
+            if self.noise_mult < 0.001:
+                self.noise_mult = 0.001
 
         return np.clip(action, -1, 1)
 
 
     def reset(self):
+        """Reset the noise generator."""
         self.noise.reset()
 
     def learn(self, experiences, gamma):
@@ -191,7 +180,8 @@ class OUNoise:
         self.mu = mu * np.ones(size)
         self.theta = theta
         self.sigma = sigma
-        self.seed = random.seed(seed)
+        self.rng = default_rng()
+        random.seed(seed)
         self.reset()
 
     def reset(self):
@@ -201,7 +191,7 @@ class OUNoise:
     def sample(self):
         """Update internal state and return it as a noise sample."""
         x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * np.array([random.random() for i in range(len(x))])
+        dx = self.theta * (self.mu - x) + self.sigma * np.array([self.rng.standard_normal() for i in range(len(x))])
         self.state = x + dx
         return self.state
 
@@ -213,13 +203,14 @@ class ReplayBuffer:
         Params
         ======
             buffer_size (int): maximum size of buffer
-            batch_size (int): size of each training batch
+            batch_size (int):  size of each training batch
+            seed (float):      seed used for the random number generator
         """
         self.action_size = action_size
         self.memory = deque(maxlen=buffer_size)  # internal memory (deque)
         self.batch_size = batch_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
-        self.seed = random.seed(seed)
+        random.seed(seed)
     
     def add(self, state, action, reward, next_state, done):
         """Add a new experience to memory."""
