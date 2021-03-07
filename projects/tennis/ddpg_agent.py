@@ -12,7 +12,9 @@ import torch.optim as optim
 import random
 import copy
 
-from model import Actor, Critic
+from ou_noise      import OUNoise
+from replay_buffer import ReplayBuffer
+from model         import Actor, Critic
 
 
 BUFFER_SIZE = int(1e6)  # replay buffer size
@@ -21,6 +23,7 @@ TAU = 0.001             # for soft update of target parameters
 LR_ACTOR = 0.001        # learning rate of the actor
 LR_CRITIC = 0.001       # learning rate of the critic
 WEIGHT_DECAY = 1e-5     # L2 weight decay
+NOISE_SCALE = 1.0       # scale factor applied to the raw noise
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -46,31 +49,36 @@ class DdpgAgent():
         self.action_size = action_size
         random.seed(random_seed)
         self.batch_size = batch_size
-
-        self.noise_mult = 1.0
+        self.noise_mult = 1.0 #the noise multiplier that will get decayed
         self.noise_decay = min(noise_decay, 1.0) #guarantee that this won't make the noise grow
-        self.learn_control = 0
+        self.learn_control = 0 #counts iterations between learning sessions
         self.learn_every = learn_every
         self.learn_iterations = learn_iter
 
-        layer1_units = 400
-        layer2_units = 256
+        layer1_units = 100
+        layer2_units = 56
 
         # Actor Network (w/ Target Network)
-        self.actor_local  = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units).to(device)
-        self.actor_target = Actor(state_size, action_size, random_seed, fc1_units=layer1_units, fc2_units=layer2_units).to(device)
+        self.actor_local  = Actor(state_size, action_size, random_seed,
+                                  fc1_units=layer1_units, fc2_units=layer2_units).to(device)
+        self.actor_target = Actor(state_size, action_size, random_seed,
+                                  fc1_units=layer1_units, fc2_units=layer2_units).to(device)
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
 
         # Critic Network (w/ Target Network)
-        self.critic_local  = Critic(state_size, action_size, random_seed, fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
-        self.critic_target = Critic(state_size, action_size, random_seed, fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
-        self.critic_optimizer = optim.Adam(self.critic_local.parameters(), lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
+        self.critic_local  = Critic(state_size, action_size, random_seed,
+                                    fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
+        self.critic_target = Critic(state_size, action_size, random_seed,
+                                    fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
+        self.critic_optimizer = optim.Adam(self.critic_local.parameters(),
+                                           lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
 
         # Noise process
         self.noise = OUNoise(action_size, random_seed)
 
         # Replay memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, self.batch_size, random_seed)
+        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, batch_size, random_seed)
+
     
     def step(self, state, action, reward, next_state, done):
         """Save experience in replay memory, and use random sample from buffer to learn."""
@@ -85,6 +93,7 @@ class DdpgAgent():
                 experiences = self.memory.sample()
                 self.learn(experiences, GAMMA)
 
+
     def act(self, state, add_noise=True):
         """Returns actions for given state as per current policy."""
 
@@ -96,7 +105,10 @@ class DdpgAgent():
 
         # add noise with gradual decay
         if add_noise:
-            action += self.noise.sample() * self.noise_mult
+            n = self.noise.sample() * NOISE_SCALE
+            #print("act: action = ", action) #debug
+            #print("     noise  = ", n)
+            action += n*self.noise_mult
             self.noise_mult *= self.noise_decay
             if self.noise_mult < 0.001:
                 self.noise_mult = 0.001
@@ -122,6 +134,8 @@ class DdpgAgent():
         """
 
         states, actions, rewards, next_states, dones = experiences
+        #print("learn: states = ", states.shape) #debug
+
 
         # ---------------------------- update critic ---------------------------- #
 
@@ -139,7 +153,7 @@ class DdpgAgent():
         # Minimize the loss
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic_local.parameters(), 1) #John added per lesson suggestion; gradient clipping
+        torch.nn.utils.clip_grad_norm_(self.critic_local.parameters(), 1)
         self.critic_optimizer.step()
 
         # ---------------------------- update actor ---------------------------- #
@@ -151,7 +165,7 @@ class DdpgAgent():
         # Minimize the loss
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor_local.parameters(), 1) #John added
+        torch.nn.utils.clip_grad_norm_(self.actor_local.parameters(), 1)
         self.actor_optimizer.step()
 
         # ----------------------- update target networks ----------------------- #
