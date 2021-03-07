@@ -24,6 +24,7 @@ from collections import deque
 from ddpg_agent  import DdpgAgent
 
 AVG_SCORE_EXTENT = 100 #number of episodes over which running average scores are computed
+CHECKPOINT_PATH = "checkpoint/" #can be empty string, but if a dir is named, needs trailing /
 
 
 def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
@@ -38,6 +39,7 @@ def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
     #print("train: state_size = {}, action_size = {}".format(state_size, action_size)) #debug
 
     scores = []
+    sum_steps = 0 #accumulates number of time steps exercised
     recent_scores = deque(maxlen=AVG_SCORE_EXTENT)
     start_time = time.perf_counter()
     starting_episode = 0 #could be used for continuing training from a checkpoint
@@ -78,9 +80,10 @@ def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
 
             # roll over new state and check for episode completion
             states = next_states
-            score += np.max(rewards, 0) #use the highest reward from the agents
+            score += np.max(rewards) #use the highest reward from the agents
             #print("       score = ", score) #debug
             if np.any(dones):
+                sum_steps += i
                 break
 
         # determine epoch duration and estimate remaining time
@@ -94,14 +97,19 @@ def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
         scores.append(score)
         recent_scores.append(score)
         avg_score = np.mean(recent_scores)
-        print('\rEpisode {}\tAverage Score: {:.2f}, avg {:.1f} episodes/min'
+        print('\rEpisode {}\tAverage Score: {:.3f}, avg {:.0f} episodes/min'
               .format(e, avg_score, 1.0/avg_duration), end="")
         if e > 0  and  e % checkpoint_interval == 0:
-            torch.save(agent0.actor_local.state_dict(),  '{}_checkpoint0a_{:d}.pt'.format(run_name, e))
-            torch.save(agent0.critic_local.state_dict(), '{}_checkpoint0c_{:d}.pt'.format(run_name, e))
-            torch.save(agent1.actor_local.state_dict(),  '{}_checkpoint1a_{:d}.pt'.format(run_name, e))
-            torch.save(agent1.critic_local.state_dict(), '{}_checkpoint1c_{:d}.pt'.format(run_name, e))
-            print('\rEpisode {}\tAverage Score: {:.2f}\t{}             '.format(e, avg_score, time_est_msg))
+            torch.save(agent0.actor_local.state_dict(),  '{}{}_checkpoint0a_{:d}.pt'
+                       .format(CHECKPOINT_PATH, run_name, e))
+            torch.save(agent0.critic_local.state_dict(), '{}{}_checkpoint0c_{:d}.pt'
+                       .format(CHECKPOINT_PATH, run_name, e))
+            torch.save(agent1.actor_local.state_dict(),  '{}{}_checkpoint1a_{:d}.pt'
+                       .format(CHECKPOINT_PATH, run_name, e))
+            torch.save(agent1.critic_local.state_dict(), '{}{}_checkpoint1c_{:d}.pt'
+                       .format(CHECKPOINT_PATH, run_name, e))
+            print('\rEpisode {}\tAverage Score: {:.2f}\t{}             '
+                  .format(e, avg_score, time_est_msg))
 
         if sleeping:
             if e % 50 < 5:
@@ -109,11 +117,17 @@ def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
 
         if e > 100  and  avg_score >= winning_score:
             print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(e, avg_score))
-            torch.save(agent0.actor_local.state_dict(),  '{}_checkpoint0a.pt'.format(run_name))
-            torch.save(agent0.critic_local.state_dict(), '{}_checkpoint0c.pt'.format(run_name))
-            torch.save(agent1.actor_local.state_dict(),  '{}_checkpoint1a.pt'.format(run_name))
-            torch.save(agent1.critic_local.state_dict(), '{}_checkpoint1c.pt'.format(run_name))
+            torch.save(agent0.actor_local.state_dict(),  '{}{}_checkpoint0a.pt'
+                       .format(CHECKPOINT_PATH, run_name))
+            torch.save(agent0.critic_local.state_dict(), '{}{}_checkpoint0c.pt'
+                       .format(CHECKPOINT_PATH, run_name) 
+            torch.save(agent1.actor_local.state_dict(),  '{}{}_checkpoint1a.pt'
+                       .format(CHECKPOINT_PATH, run_name))
+            torch.save(agent1.critic_local.state_dict(), '{}{}_checkpoint1c.pt'
+                       .format(CHECKPOINT_PATH, run_name))
             break
 
+    print("Avg time steps/episode = {:.1f}"
+          .format(float(sum_steps)/float(max_episodes-starting_episode)))
     return scores
 

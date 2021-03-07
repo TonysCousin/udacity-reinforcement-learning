@@ -55,8 +55,8 @@ class DdpgAgent():
         self.learn_every = learn_every
         self.learn_iterations = learn_iter
 
-        layer1_units = 100
-        layer2_units = 56
+        layer1_units = 400
+        layer2_units = 256
 
         # Actor Network (w/ Target Network)
         self.actor_local  = Actor(state_size, action_size, random_seed,
