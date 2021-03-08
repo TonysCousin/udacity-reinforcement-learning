@@ -108,7 +108,7 @@ def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
                        .format(CHECKPOINT_PATH, run_name, e))
             torch.save(agent1.critic_local.state_dict(), '{}{}_checkpoint1c_{:d}.pt'
                        .format(CHECKPOINT_PATH, run_name, e))
-            print('\rEpisode {}\tAverage Score: {:.2f}\t{}             '
+            print('\rEpisode {}\tAverage Score: {:.3f}\t{}             '
                   .format(e, avg_score, time_est_msg))
 
         if sleeping:
@@ -120,14 +120,14 @@ def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
             torch.save(agent0.actor_local.state_dict(),  '{}{}_checkpoint0a.pt'
                        .format(CHECKPOINT_PATH, run_name))
             torch.save(agent0.critic_local.state_dict(), '{}{}_checkpoint0c.pt'
-                       .format(CHECKPOINT_PATH, run_name) 
+                       .format(CHECKPOINT_PATH, run_name))
             torch.save(agent1.actor_local.state_dict(),  '{}{}_checkpoint1a.pt'
                        .format(CHECKPOINT_PATH, run_name))
             torch.save(agent1.critic_local.state_dict(), '{}{}_checkpoint1c.pt'
                        .format(CHECKPOINT_PATH, run_name))
             break
 
-    print("Avg time steps/episode = {:.1f}"
+    print("\nAvg time steps/episode = {:.1f}"
           .format(float(sum_steps)/float(max_episodes-starting_episode)))
     return scores
 
