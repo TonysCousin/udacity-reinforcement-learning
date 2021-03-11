@@ -1,6 +1,8 @@
 # Defines an agent that uses the DDPG algorithm.
 #
-# This code is a copy of the code used for my continuous control (Reacher) project.
+# This code is based on the code used for my continuous control (Reacher) project,
+# but has been influenced by
+# https://github.com/and-buk/Udacity-DRLND/blob/master/p_collaboration_and_competition/MADDPG.py
 #
 # This code is based on code provided by Udacity instructor staff
 # for the DRL nanodegree program.
@@ -20,24 +22,24 @@ from model         import Actor, Critic
 BUFFER_SIZE = int(1e6)  # replay buffer size
 GAMMA = 0.99            # discount factor
 TAU = 0.001             # for soft update of target parameters
-LR_ACTOR = 0.001        # learning rate of the actor
+LR_ACTOR = 0.0001       # learning rate of the actor
 LR_CRITIC = 0.001       # learning rate of the critic
 WEIGHT_DECAY = 1e-5     # L2 weight decay
-NOISE_SCALE = 1.0       # scale factor applied to the raw noise
+NOISE_SCALE = 0.1       # scale factor applied to the raw noise
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-class DdpgAgent():
+class DdpgAgent:
     """Interacts with and learns from the environment."""
     
     def __init__(self, state_size, action_size, random_seed, batch_size=32,
-                 noise_decay=1.0, learn_every=20, learn_iter=10):
+                 noise_decay=1.0, learn_every=20, learn_iter=1):
         """Initialize an Agent object.
         
         Params
         ======
-            state_size (int):     dimension of each state
-            action_size (int):    dimension of each action
+            state_size (int):     number of state values
+            action_size (int):    number of action values
             random_seed (int):    random seed
             batch_size (int):     the size of each minibatch used for learning
             noise_decay (float):  multiplier on the magnitude of noise; decay is applied each time step (must be <= 1.0)
@@ -45,9 +47,12 @@ class DdpgAgent():
             learn_iter (int):     number of learning iterations that get run during each learning session
         """
 
+        # don't seed the random package here; assume it has been done by caller
+        # TODO:  understand why seeds are passed everywhere; isn't "random" a singleton that
+        #        only needs to be seeded one time in the program?
+
         self.state_size = state_size
         self.action_size = action_size
-        random.seed(random_seed)
         self.batch_size = batch_size
         self.noise_mult = 1.0 #the noise multiplier that will get decayed
         self.noise_decay = min(noise_decay, 1.0) #guarantee that this won't make the noise grow
