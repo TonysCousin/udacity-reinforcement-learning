@@ -13,7 +13,11 @@ import numpy as np
 import torch
 import random
 
-from ddpg_agent    import DdpgAgent
+from replay_buffer import ReplayBuffer
+from maddpg_agent  import MultiDdpgAgent
+
+BUFFER_SIZE = int(1e6)  # replay buffer size
+
 
 class Maddpg:
     """Manages the training and execution of multiple agents in the same environment"""
@@ -25,6 +29,7 @@ class Maddpg:
         Params
             state_size (int):     number of state values for each actor
             action_size (int):    number of action values for each actor
+            num_agents (int):     number of agents in the environment (all will be trained)
             random_seed (int):    random seed
             batch_size (int):     the size of each minibatch used for learning
             noise_decay (float):  multiplier on the magnitude of noise; decay is applied each time step (must be <= 1.0)
@@ -37,12 +42,12 @@ class Maddpg:
         self.num_agents = num_agents
         random.seed(random_seed)
 
-        # define simple replay memory
+        # define simple replay memory common to all agents
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, batch_size, random_seed)
 
         # create a list of agent objects
-        self.agents = [DdpgAgent(state_size, action_size, random_seed, batch_size,
-                                 noise_decay, learn_every, learn_iter)
+        self.agents = [MultiDdpgAgent(state_size, action_size, random_seed, self.memory,
+                                      batch_size, noise_decay, learn_every, learn_iter)
                        for a in range(num_agents)]
 
 
@@ -63,12 +68,10 @@ class Maddpg:
            Return:  ndarray of actions taken by all agents
         """
 
-        print("Maddpg.act: states = ", states)
-        actions = np.zeros(self.num_agents, self.action_size)
-        print("Maddpg.act: actions = ", actions)
-        for i, a in enumerate(self.agents):
-            a[i, :] = a.act(states[i], add_noise)
-        return a
+        actions = np.zeros((self.num_agents, self.action_size))
+        for i, agent in enumerate(self.agents):
+            actions[i, :] = agent.act(states[i], add_noise)
+        return actions
 
 
     def step(self, obs, actions, rewards, next_obs, dones):
@@ -76,17 +79,21 @@ class Maddpg:
            the agents by one time step, invoking learning if appropriate.
 
            Params:
-               obs (tuple of float ndarray):      the current state values for all agents
-               actions (ndarray of float):        the current actions from all agents
-               rewards (ndarray of floats):       current rewards earned from all agents
-               next_obs (tuple of float ndarray): est of next time step's states for all agents
-               dones (ndarray of bool):           for each agent, is episode complete?
+               obs (ndarray of float):      the current state values for all agents, one row per agent
+               actions (ndarray of float):  the current actions from all agents, one row per agent
+               rewards (list of float):     current reward earned from eadh agent
+               next_obs (ndarray of float): est of next time step's states, one row per agent
+               dones (list of bool):        for each agent, is episode complete?
 
            Return:  none
         """
 
+        print("maddpg.step: obs = ", obs)
+        print("             actions = ", actions)
+        print("             rewards = ", rewards)
+
         # add the new experience to the replay buffer
-        memory.add(obs, actions, rewards, next_obs, dones)
+        self.memory.add(obs, actions, rewards, next_obs, dones)
 
         # advance each agent
         for i, a in enumerate(self.agents):

@@ -2,33 +2,52 @@
 # simulation environment.
 #
 # Parameters:
-# agent0              - the first tennis-playing agent in the game [DdpgAgent]
-# agent1              - the second tennis-playing agent in the game [DdpgAgent]
-# env                 - the Unity game environment [UnityEnvironment]
-# run_name            - an arbitrary identifier used in the results output and checkpoint
-#                         filenames [string]
-# max_episodes        - max number of episodes to train before forced to give up [int]
-# max_time_steps      - max number of time steps in each episode [int]
-# sleeping            - do we desire a pause after each episode? (helpful for visualizing) [bool]
-# winning_score       - target reward that needs to be exceeded over 100 consecutive episodes
-#                         to consider training complete [float]
-# checkpoint_interval - number of episodes between checkpoint storage [int]
+# maddpg (Maddpg):           the MADDPG manager object that manages the game play
+# env (UnityEnvironment):    the Unity game environment
+# run_name (string):         an arbitrary identifier used in the results output and checkpoint
+#                              filenames
+# max_episodes (int):        max number of episodes to train before forced to give up
+# max_time_steps (int):      max number of time steps in each episode
+# sleeping (bool):           do we desire a pause after each episode? (helpful for visualizing)
+# winning_score (float):     target reward that needs to be exceeded over 100 consecutive episodes
+#                              to consider training complete [float]
+# checkpoint_interval (int): number of episodes between checkpoint storage
 #
-# Returns: list of scores (rewards) from each episode [list of int]
+# Returns: list of scores (rewards) from each episode (list of int)
 
 import numpy as np
 import torch
 import time
 from collections import deque
 
-from ddpg_agent  import DdpgAgent
+from maddpg      import Maddpg
 
 AVG_SCORE_EXTENT = 100 #number of episodes over which running average scores are computed
-CHECKPOINT_PATH = "checkpoint/" #can be empty string, but if a dir is named, needs trailing /
+CHECKPOINT_PATH = "checkpoint/" #can be empty string, but if a dir is named, needs trailing '/'
 
 
-def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
-          max_time_steps=100, sleeping=False, winning_score=0.0, checkpoint_interval=1000):
+def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max_time_steps=100,
+          sleeping=False, winning_score=0.0, checkpoint_interval=1000):
+
+    """Trains a set of DRL agents in a Unity ML-Agents environment.
+
+       Params:
+           maddpg (Maddpg):           the manager of the agents and learning process
+           env (UnityEnvironment):    the game environment
+           run_name (string):         description of training session (used in status reporting
+                                        and checkpoint filenames)
+           starting_episode (int):    episode # to begin counting from (used if restarting training
+                                        from a checkpoint)
+           max_episodes (int):        max number of episodes to train if winning condition isn't met
+           max_time_steps (int):      number of time steps allowed in an episode before forcing end
+           sleeping (bool):           should the code pause for a few sec after selected episodes?
+                                        (doing so allows for better visualizing of the environment)
+           winning_score (float):     game score above which is considered a win (averaged over
+                                        AVG_SCORE_EXTENT consecutive episodes)
+           checkpoint_interval (int): number of episodes between checkpoint files being stored
+
+       Return: list of episode scores (list of float)
+    """
 
     # Initialize Unity simulation environment
     brain_name = env.brain_names[0]
@@ -42,41 +61,35 @@ def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
     sum_steps = 0 #accumulates number of time steps exercised
     recent_scores = deque(maxlen=AVG_SCORE_EXTENT)
     start_time = time.perf_counter()
-    starting_episode = 0 #could be used for continuing training from a checkpoint
 
     # loop on episodes
     for e in range(starting_episode, max_episodes):
         
-        # Reset the enviroment and get the initial state of environment & agents
+        # Reset the enviroment & agents and get the initial state of environment & agents
         env_info = env.reset(train_mode=True)[brain_name]
         states = env_info.vector_observations #returns tensor(2, state_size)
         score = 0 #total score for this episode
+        maddpg.reset()
         #print("Top of episode {}: states = ".format(e), states) #debug
 
         # loop over time steps
         for i in range(max_time_steps):
 
             # Predict the best actions for the current state and store them in a single tensor
-            action0 = agent0.act(states[0]) #returns ndarray(1, 2)
-            action1 = agent1.act(states[1])
-            actions = np.concatenate((action0.reshape(1, action_size),
-                                      action1.reshape(1, action_size)), 0)
-            #print("Step", i, "action0 = ", action0) #debug
-            #print("       action1 = ", action1)
-            #print("       actions = ", actions)
+            actions = maddpg.act(states) #returns ndarray, one row for each agent
+            #print("train: actions = ", actions, type(actions)) #debug
 
             # get the new state & reward based on this action
             env_info = env.step(actions)[brain_name]
-            next_states = env_info.vector_observations #returns ndarray(2, state_size)
-            rewards = env_info.rewards #returns list
-            dones = env_info.local_done #returns list
-            #print("       next_states = ", next_states, type(next_states)) #debug
-            #print("       rewards = ", rewards, type(rewards))
-            #print("       dones = ", dones)
+            next_states = env_info.vector_observations #returns ndarray, one row for each agent
+            rewards = env_info.rewards #returns list of floats, one for each agent
+            dones = env_info.local_done #returns list of bools, one for each agent
+            #print("      next_states = ", next_states, type(next_states)) #debug
+            #print("      rewards = ", rewards, type(rewards))
+            #print("      dones = ", dones, type(dones))
 
             # update the agents with this new info
-            agent0.step(states[0], actions[0], rewards[0], next_states[0], dones[0]) 
-            agent1.step(states[1], actions[1], rewards[1], next_states[1], dones[1]) 
+            maddpg.step(states, actions, rewards, next_states, dones) 
 
             # roll over new state and check for episode completion
             states = next_states
@@ -111,8 +124,9 @@ def train(agent0, agent1, env, run_name="UNDEF", max_episodes=2,
             print('\rEpisode {}\tAverage Score: {:.3f}\t{}             '
                   .format(e, avg_score, time_est_msg))
 
+        # if sleeping is chosen, then pause for viewing after selected episodes
         if sleeping:
-            if e % 50 < 5:
+            if e % 100 < 5:
                 time.sleep(1) #allow time to view the Unity window
 
         if e > 100  and  avg_score >= winning_score:
