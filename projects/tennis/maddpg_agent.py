@@ -23,8 +23,8 @@ from model         import Actor, Critic
 
 GAMMA = 0.99            # discount factor
 TAU = 0.001             # for soft update of target parameters
-LR_ACTOR = 0.0001       # learning rate of the actor
-LR_CRITIC = 0.001       # learning rate of the critic
+LR_ACTOR = 0.00001       # learning rate of the actor
+LR_CRITIC = 0.0001       # learning rate of the critic
 WEIGHT_DECAY = 1e-5     # L2 weight decay
 NOISE_SCALE = 0.5       # scale factor applied to the raw noise
 

@@ -59,6 +59,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
 
     scores = []
     sum_steps = 0 #accumulates number of time steps exercised
+    max_steps_experienced = 0
     recent_scores = deque(maxlen=AVG_SCORE_EXTENT)
     start_time = time.perf_counter()
 
@@ -97,6 +98,8 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
             #print("       score = ", score) #debug
             if np.any(dones):
                 sum_steps += i
+                if i > max_steps_experienced:
+                    max_steps_experienced = i
                 break
 
         # determine epoch duration and estimate remaining time
@@ -110,8 +113,9 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         scores.append(score)
         recent_scores.append(score)
         avg_score = np.mean(recent_scores)
-        print("\rEpisode {}\tAverage Score: {:.3f}, avg {:.0f} eps/min"
-              .format(e, avg_score, 1.0/avg_duration), end="")
+        max_recent = np.max(recent_scores)
+        print("\rEpisode {}\tRunning avg/max score: {:.3f}/{:.3f}, avg {:.0f} eps/min"
+              .format(e, avg_score, max_recent, 1.0/avg_duration), end="")
         if e > 0  and  e % checkpoint_interval == 0:
             maddpg.checkpoint(CHECKPOINT_PATH, run_name, e)
             print("\rEpisode {}\tAverage Score: {:.3f}, avg {:.0f} eps/min; {}"
@@ -123,11 +127,13 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
                 time.sleep(1) #allow time to view the Unity window
 
         if e > 100  and  avg_score >= winning_score:
-            print("\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}".format(e, avg_score))
+            print("\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}"
+                  .format(e, avg_score))
             maddpg.checkpoint(CHECKPOINT_PATH, run_name, e)
             break
 
-    print("\nAvg time steps/episode = {:.1f}"
-          .format(float(sum_steps)/float(max_episodes-starting_episode)))
+    print("\nAvg/max time steps/episode = {:.1f}/{:d}"
+          .format(float(sum_steps)/float(max_episodes-starting_episode),
+                  max_steps_experienced))
     return scores
 

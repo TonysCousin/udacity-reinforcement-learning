@@ -16,7 +16,10 @@ import random
 from replay_buffer import ReplayBuffer
 from maddpg_agent  import MultiDdpgAgent
 
-BUFFER_SIZE = int(1e6)  # replay buffer size
+# set size of replay buffer to accommodate ~4000 poorly performing episodes;
+# this will force older ones to be discarded and give some preference to episodes
+# that are successful (more time steps)
+BUFFER_SIZE = 50000
 
 
 class Maddpg:
