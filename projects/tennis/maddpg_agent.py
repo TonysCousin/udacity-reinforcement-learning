@@ -34,14 +34,15 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class MultiDdpgAgent:
     """Interacts with and learns from the environment and other agents in the environment."""
     
-    def __init__(self, state_size, action_size, random_seed, replay_buf, batch_size=32,
-                 noise_decay=1.0, learn_every=20, learn_iter=1):
+    def __init__(self, state_size, action_size, num_agents, random_seed, replay_buf,
+                 batch_size=32, noise_decay=1.0, learn_every=20, learn_iter=1):
         """Initialize an Agent object.
         
         Params
         ======
             state_size (int):          number of state values for this agent
             action_size (int):         number of action values for this agent
+            num_agents (int):          number of agents in the whole environment
             random_seed (int):         seed for random number generator
             replay_buf (ReplayBuffer): buffer object holding experiences for replay (all agents)
             batch_size (int):          size of each minibatch used for learning
@@ -58,6 +59,7 @@ class MultiDdpgAgent:
 
         self.state_size = state_size
         self.action_size = action_size
+        self.num_agents = num_agents
         self.batch_size = batch_size
         self.memory = replay_buf
         self.noise_mult = 1.0 #the noise multiplier that will get decayed
@@ -77,9 +79,9 @@ class MultiDdpgAgent:
         self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
 
         # Critic Network (w/ Target Network)
-        self.critic_local  = Critic(state_size, action_size, random_seed,
+        self.critic_local  = Critic(num_agents*state_size, num_agents*action_size, random_seed,
                                     fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
-        self.critic_target = Critic(state_size, action_size, random_seed,
+        self.critic_target = Critic(num_agents*state_size, num_agents*action_size, random_seed,
                                     fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(),
                                            lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
@@ -139,49 +141,52 @@ class MultiDdpgAgent:
 
            Params
                experiences (Tuple of tensors): (s, a, r, s', done), where
-                 each tensor is a stack batch_size high. Within each element of the
-                 stack is num_agents rows; each row represents a single agent's info.
+                 each tensor has shape [b, a, x]. b is batch size, a is num agents,
+                 and x is num states (for one agent) for s and s';
+                     x is num actions (for one agent) for a
+                     x is 1 for r and done
                gamma (float): discount factor
         """
 
         # extract the elements of the replayed experience row
         obs, actions, rewards, next_obs, dones = experiences
-        print("learn: experiences =\n", experiences)
-        print("learn: obs = ", obs.shape) #debug
-        print("       rewards = ", rewards, rewards.shape)
-        print("       next_obs = ", next_obs)
-        print("       dones = ", dones, dones.shape)
-        print("       actions = ", actions)
-        print("       NOTE: actions don't get split out!")
-
-        # split the state tensors out for each actor from their tensors
-        states = torch.chunk(obs, 2, dim=1)
-        next_states = torch.chunk(next_obs, 2, dim=1)
-        print("learn: states = ", states) #debug
-
-        # split out the rewards and dones for each actor from their tensors
-        reward = rewards[:, agent_id].reshape(rewards[0], 1)
-        done = dones[:, agent_id].rehsape(dones[0], 1)
-        print("       reward = ", reward)
+        #print("learn: obs = ", obs)
+        #print("       rewards = ", rewards, rewards.shape)
+        #print("       next_obs = ", next_obs)
+        #print("       dones = ", dones, dones.shape)
+        #print("       actions = ", actions)
 
 
         # ---------------------------- update critic ---------------------------- #
 
-        # Get predicted next-state actions and Q values from target models
-        next_actions = [self.actor_target(s) for s in next_states]
-        target_actions = torch.cat(next_actions, dim=1).to(device)
-        Q_targets_next = self.critic_target(next_states, target_actions)
-        print("       next_actions   = ", next_actions)   #debug
-        print("       target_actions = ", target_actions)
-        print("       Q_targets_next = ", Q_targets_next)
+        # grab the batch of next state vectors for each actor and feed them into the
+        # target network to get predicted next actions (each row is actions of all actors)
+        target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
+        for i in range(self.num_agents):
+            s = next_obs[:, i, :].to(device)
+            target_actions[:, i*self.action_size:(i+1)*self.action_size] = \
+                          self.actor_target(s)
 
-        # Compute Q targets for current states (y_i)
+        # create a next_states tensor [b, x] where each row represents the states
+        # of all agents
+        next_states = next_obs.view(self.batch_size, -1)
+
+        # compute the Q values for the next states/actions from the target model
+        Q_targets_next = self.critic_target(next_states, target_actions)
+
+        # Compute Q targets for current states (y_i) for this agent
+        reward = rewards[:, agent_id, :].squeeze(dim=1).view(self.batch_size, -1)
+        done = dones[:, agent_id, :].squeeze(dim=1).view(self.batch_size, -1)
         Q_targets = reward + gamma*Q_targets_next*(1 - done)
 
+        # reshape the observations & actions so that all agents are represented on each row
+        all_agents_states = obs.view(self.batch_size, -1)
+        all_agents_actions = actions.view(self.batch_size, -1)
+
         # Compute critic loss
-        Q_expected = self.critic_local(obs, actions)
+        Q_expected = self.critic_local(all_agents_states, all_agents_actions)
         critic_loss = F.mse_loss(Q_expected, Q_targets)
-        print("       critic_loss = ", critic_loss) #debug
+        #print("       critic_loss = ", critic_loss)
 
         # Minimize the loss
         self.critic_optimizer.zero_grad()
@@ -192,10 +197,12 @@ class MultiDdpgAgent:
         # ---------------------------- update actor ---------------------------- #
 
         # Compute actor loss
-        ap = [self.actor_local(s) for s in states]
-        actions_pred = torch.cat(actions_pred, dim=1).to(device)
-        print("       actions_pred = ", actions_pred) #debug
-        actor_loss = -self.critic_local(obs, actions_pred).mean() #can't detach() here
+        actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
+        for i in range(self.num_agents):
+            s = obs[:, i, :].to(device)
+            actions_pred[:, i*self.action_size:(i+1)*self.action_size] = self.actor_local(s)
+        #print("       actions_pred =\n", actions_pred)
+        actor_loss = -self.critic_local(all_agents_states, actions_pred).mean() #can't detach()
 
         # Minimize the loss
         self.actor_optimizer.zero_grad()

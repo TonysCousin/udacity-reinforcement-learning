@@ -46,7 +46,7 @@ class Maddpg:
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, batch_size, random_seed)
 
         # create a list of agent objects
-        self.agents = [MultiDdpgAgent(state_size, action_size, random_seed, self.memory,
+        self.agents = [MultiDdpgAgent(state_size, action_size, num_agents, random_seed, self.memory,
                                       batch_size, noise_decay, learn_every, learn_iter)
                        for a in range(num_agents)]
 
@@ -88,9 +88,9 @@ class Maddpg:
            Return:  none
         """
 
-        print("maddpg.step: obs = ", obs)
-        print("             actions = ", actions)
-        print("             rewards = ", rewards)
+        #print("maddpg.step: obs = ", obs)
+        #print("             actions = ", actions)
+        #print("             rewards = ", rewards)
 
         # add the new experience to the replay buffer
         self.memory.add(obs, actions, rewards, next_obs, dones)

@@ -1,9 +1,11 @@
-# Defines an agent that uses the DDPG algorithm.
+# Provides a simple replay buffer (without priority) for randomly sampling past
+# experiences.
 #
 # This code is a copy of the code used for my continuous control (Reacher) project.
 #
 # This code is based on code provided by Udacity instructor staff
-# for the DRL nanodegree program.
+# for the DRL nanodegree program, although the sample() method is completely
+# redesigned to be more intuitive.
 
 import numpy as np
 import torch
@@ -43,23 +45,50 @@ class ReplayBuffer:
 
            Return: tuple of the individual elements of experience:
                      states, actions, rewards, next_states, dones
-                   Each element is a tensor with width of whatever that element needs to represent
-                   a single agent.  Number of rows is num_agents * batch_size, so the tensor
-                   is a stack of batches of [num_agents, element_width]
+                   Each item in the tuple is a tensor of shape (b, a, x), where
+                     b is the number of items in a training batch (same for all elements)
+                     a is the number of agents (same for all elements)
+                     x is the number of items in that element (different for each element)
+                   Each "row" (set of x values) represents a single agent.
         """
 
         experiences = random.sample(self.memory, k=self.batch_size) #returns list of experiences
+        e0 = experiences[0]
+        num_agents = e0.state.shape[0] #assume this applies to all elements
+        states = torch.zeros(self.batch_size, num_agents, e0.state.shape[1], dtype=torch.float)
+        actions = torch.zeros(self.batch_size, num_agents, e0.action.shape[1], dtype=torch.float)
+        rewards = torch.zeros(self.batch_size, num_agents, 1, dtype=torch.float)
+        next_states = torch.zeros(self.batch_size, num_agents, e0.next_state.shape[1], dtype=torch.float)
+        dones = torch.zeros(self.batch_size, num_agents, 1, dtype=torch.float)
 
         if len(experiences) == self.batch_size:
-            states = torch.from_numpy(np.vstack([e.state for e in experiences])).float().to(device)
-            actions = torch.from_numpy(np.vstack([e.action for e in experiences])).float().to(device)
-            rewards = torch.from_numpy(np.vstack([e.reward for e in experiences])).float().to(device)
-            next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences])) \
-                                           .float().to(device)
-            dones = torch.from_numpy(np.vstack([e.done for e in experiences]) \
-                                               .astype(np.uint8)).float().to(device)
 
-        return (states, actions, rewards, next_states, dones)
+            # loop through all the experiences, assigning each to a layer in the output tensor
+            for i, e in enumerate(experiences):
+                #print("\n...i = ", i, ", experience =\n", e)
+                states[i, :, :] = torch.from_numpy(e.state).to(device)
+                actions[i, :, :] = torch.from_numpy(e.action).to(device)
+                next_states[i, :, :] = torch.from_numpy(e.next_state).to(device)
+
+                # reward and done are lists, not tensors
+                rewards[i, :, :] = torch.tensor(e.reward).view(num_agents, -1)[:, :]
+                dones[i, :, :]   = torch.tensor(e.done).view(num_agents, -1)[:, :]
+                rewards.to(device)
+                dones.to(device)
+
+            #print("replay_buffer.sample: states = ", states.shape)
+            #print(states)
+            #print("                      actions = ", actions.shape)
+            #print(actions)
+            #print("                      rewards = ", rewards.shape)
+            #print(rewards)
+
+            return (states, actions, rewards, next_states, dones)
+
+        else:
+            print("\n///// ReplayBuffer.sample: unexpected experiences length = {} but batch size = {}"
+                  .format(len(experiences), self.batch_size))
+            return None
 
 
     def __len__(self):

@@ -57,17 +57,19 @@ class Critic(nn.Module):
 
     def __init__(self, state_size, action_size, seed, fcs1_units=24, fc2_units=48):
         """Initialize parameters and build model.
-        Params
-        ======
-            state_size (int): Dimension of each state
-            action_size (int): Dimension of each action
-            seed (int): Random seed
-            fcs1_units (int): Number of nodes in the first hidden layer
-            fc2_units (int): Number of nodes in the second hidden layer
+           Params:
+               state_size (int):  number of values for all agents' state vectors
+               action_size (int): number of values for all agents' action vectors
+               seed (int):        random seed
+               fcs1_units (int):  number of nodes in the first hidden layer
+               fc2_units (int):   number of nodes in the second hidden layer
+
+           Note: for the critic we concatenate all agents' states & actions, so the
+           state_size and action_size include features for all agents.
         """
         super(Critic, self).__init__()
         self.fcs1 = nn.Linear(state_size, fcs1_units)
-        self.fc2 = nn.Linear(fcs1_units+action_size, fc2_units)
+        self.fc2 = nn.Linear(fcs1_units + action_size, fc2_units)
         self.fc3 = nn.Linear(fc2_units, 1)
         self.bn = nn.BatchNorm1d(fcs1_units)
         self.reset_parameters()
