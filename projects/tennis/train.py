@@ -104,25 +104,18 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         avg_duration = (current_time - start_time) / (e - starting_episode + 1) / 60.0 #minutes
         remaining_time_minutes = (starting_episode + max_episodes - e - 1) * avg_duration
         rem_time = remaining_time_minutes / 60.0
-        time_est_msg = "{:4.1f} hr rem.".format(rem_time)
+        time_est_msg = "{:4.1f} hr rem".format(rem_time)
 
         # update score bookkeeping, report status and decide if training is complete
         scores.append(score)
         recent_scores.append(score)
         avg_score = np.mean(recent_scores)
-        print('\rEpisode {}\tAverage Score: {:.3f}, avg {:.0f} episodes/min'
+        print("\rEpisode {}\tAverage Score: {:.3f}, avg {:.0f} eps/min"
               .format(e, avg_score, 1.0/avg_duration), end="")
         if e > 0  and  e % checkpoint_interval == 0:
-            torch.save(agent0.actor_local.state_dict(),  '{}{}_checkpoint0a_{:d}.pt'
-                       .format(CHECKPOINT_PATH, run_name, e))
-            torch.save(agent0.critic_local.state_dict(), '{}{}_checkpoint0c_{:d}.pt'
-                       .format(CHECKPOINT_PATH, run_name, e))
-            torch.save(agent1.actor_local.state_dict(),  '{}{}_checkpoint1a_{:d}.pt'
-                       .format(CHECKPOINT_PATH, run_name, e))
-            torch.save(agent1.critic_local.state_dict(), '{}{}_checkpoint1c_{:d}.pt'
-                       .format(CHECKPOINT_PATH, run_name, e))
-            print('\rEpisode {}\tAverage Score: {:.3f}\t{}             '
-                  .format(e, avg_score, time_est_msg))
+            maddpg.checkpoint(CHECKPOINT_PATH, run_name, e)
+            print("\rEpisode {}\tAverage Score: {:.3f}, avg {:.0f} eps/min; {}"
+                  .format(e, avg_score, 1.0/avg_duration, time_est_msg))
 
         # if sleeping is chosen, then pause for viewing after selected episodes
         if sleeping:
@@ -130,15 +123,8 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
                 time.sleep(1) #allow time to view the Unity window
 
         if e > 100  and  avg_score >= winning_score:
-            print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(e, avg_score))
-            torch.save(agent0.actor_local.state_dict(),  '{}{}_checkpoint0a.pt'
-                       .format(CHECKPOINT_PATH, run_name))
-            torch.save(agent0.critic_local.state_dict(), '{}{}_checkpoint0c.pt'
-                       .format(CHECKPOINT_PATH, run_name))
-            torch.save(agent1.actor_local.state_dict(),  '{}{}_checkpoint1a.pt'
-                       .format(CHECKPOINT_PATH, run_name))
-            torch.save(agent1.critic_local.state_dict(), '{}{}_checkpoint1c.pt'
-                       .format(CHECKPOINT_PATH, run_name))
+            print("\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}".format(e, avg_score))
+            maddpg.checkpoint(CHECKPOINT_PATH, run_name, e)
             break
 
     print("\nAvg time steps/episode = {:.1f}"

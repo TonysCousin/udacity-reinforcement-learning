@@ -26,7 +26,7 @@ TAU = 0.001             # for soft update of target parameters
 LR_ACTOR = 0.0001       # learning rate of the actor
 LR_CRITIC = 0.001       # learning rate of the critic
 WEIGHT_DECAY = 1e-5     # L2 weight decay
-NOISE_SCALE = 0.1       # scale factor applied to the raw noise
+NOISE_SCALE = 0.5       # scale factor applied to the raw noise
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

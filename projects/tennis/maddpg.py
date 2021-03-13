@@ -99,3 +99,18 @@ class Maddpg:
         for i, a in enumerate(self.agents):
             a.step(i)
 
+
+    def checkpoint(self, path, tag, episode):
+        """Saves checkpoint files for each of the networks.
+
+           Params:
+               path (string): directory path where the files will go (if not None, needs to end in /)
+               tag (string):  an aribitrary tag to distinguish this set of networks (e.g. test ID)
+               episode (int): the episode number
+        """
+
+        for i, a in enumerate(self.agents):
+            torch.save(a.actor_local.state_dict(), "{}{}_actor{}_{:d}.pt"
+                       .format(path, tag, i, episode))
+            torch.save(a.critic_local.state_dict(), "{}{}_critic{}_{:d}.pt"
+                       .format(path, tag, i, episode))
