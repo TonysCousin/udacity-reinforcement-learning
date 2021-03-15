@@ -61,7 +61,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     sum_steps = 0 #accumulates number of time steps exercised
     max_steps_experienced = 0
     recent_scores = deque(maxlen=AVG_SCORE_EXTENT)
-    start_time = time.perf_counter()
+    start_time = 0
 
     # loop on episodes
     for e in range(starting_episode, max_episodes):
@@ -71,6 +71,12 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         states = env_info.vector_observations #returns tensor(2, state_size)
         score = 0 #total score for this episode
         maddpg.reset()
+
+        # start the timer after several episodes have passed, since early ones just fill the
+        # replay buffer and go quickly; once learning starts, the pace slows down, and this
+        # timer is used to predict total run duration
+        if e == 80:
+            start_time = time.perf_counter()
         #print("Top of episode {}: states = ".format(e), states) #debug
 
         # loop over time steps
@@ -104,20 +110,24 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
 
         # determine epoch duration and estimate remaining time
         current_time = time.perf_counter()
-        avg_duration = (current_time - start_time) / (e - starting_episode + 1) / 60.0 #minutes
-        remaining_time_minutes = (starting_episode + max_episodes - e - 1) * avg_duration
-        rem_time = remaining_time_minutes / 60.0
-        time_est_msg = "{:4.1f} hr rem".format(rem_time)
+        if start_time > 0:
+            avg_duration = (current_time - start_time) / (e - starting_episode + 1) / 60.0 #minutes
+            remaining_time_minutes = (starting_episode + max_episodes - e - 1) * avg_duration
+            rem_time = remaining_time_minutes / 60.0
+            time_est_msg = "{:4.1f} hr rem".format(rem_time)
+        else:
+            avg_duration = 1.0 #avoids divide-by-zero
+            time_est_msg = "???"
 
         # update score bookkeeping, report status and decide if training is complete
         scores.append(score)
         recent_scores.append(score)
         avg_score = np.mean(recent_scores)
         max_recent = np.max(recent_scores)
-        mem_stats = maddpg.get_memory_stats()
+        mem_stats = maddpg.get_memory_stats() #element 0 is total size, 1 is num good experiences
         mem_pct = 0.0
         if mem_stats[0] > 0:
-            mem_pct = float(mem_stats[1])/mem_stats[0]
+            mem_pct = min(100.0*float(mem_stats[1])/mem_stats[0], 99.9)
         print("\r{}\tRunning avg/max: {:.3f}/{:.3f}, mem: {:6d}/{:6d} ({:4.1f}%), avg {:.1f} eps/min   "
               .format(e, avg_score, max_recent, mem_stats[0], mem_stats[1], mem_pct, 
                       1.0/avg_duration), end="")

@@ -201,7 +201,6 @@ class MultiDdpgAgent:
         for i in range(self.num_agents):
             s = obs[:, i, :].to(device)
             actions_pred[:, i*self.action_size:(i+1)*self.action_size] = self.actor_local(s)
-        #print("       actions_pred =\n", actions_pred)
         actor_loss = -self.critic_local(all_agents_states, actions_pred).mean() #can't detach()
 
         # Minimize the loss
