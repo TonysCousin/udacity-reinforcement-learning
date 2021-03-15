@@ -114,11 +114,11 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         recent_scores.append(score)
         avg_score = np.mean(recent_scores)
         max_recent = np.max(recent_scores)
-        print("\rEpisode {}\tRunning avg/max score: {:.3f}/{:.3f}, avg {:.0f} eps/min"
+        print("\rEpisode {}\tRunning avg/max score: {:.3f}/{:.3f}, avg {:.1f} eps/min   "
               .format(e, avg_score, max_recent, 1.0/avg_duration), end="")
         if e > 0  and  e % checkpoint_interval == 0:
             maddpg.checkpoint(CHECKPOINT_PATH, run_name, e)
-            print("\rEpisode {}\tAverage Score: {:.3f}, avg {:.0f} eps/min; {}"
+            print("\rEpisode {}\tAverage Score: {:.3f}, avg {:.1f} eps/min; {}   "
                   .format(e, avg_score, 1.0/avg_duration, time_est_msg))
 
         # if sleeping is chosen, then pause for viewing after selected episodes
