@@ -1,8 +1,6 @@
 # Provides a simple replay buffer (without priority) for randomly sampling past
 # experiences.
 #
-# This code is a copy of the code used for my continuous control (Reacher) project.
-#
 # This code is based on code provided by Udacity instructor staff
 # for the DRL nanodegree program, although the sample() method is completely
 # redesigned to be more intuitive.
@@ -11,8 +9,6 @@ import numpy as np
 import torch
 import random
 from collections import namedtuple, deque
-
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class ReplayBuffer:
@@ -66,15 +62,13 @@ class ReplayBuffer:
             # loop through all the experiences, assigning each to a layer in the output tensor
             for i, e in enumerate(experiences):
                 #print("\n...i = ", i, ", experience =\n", e)
-                states[i, :, :] = torch.from_numpy(e.state).to(device)
-                actions[i, :, :] = torch.from_numpy(e.action).to(device)
-                next_states[i, :, :] = torch.from_numpy(e.next_state).to(device)
+                states[i, :, :] = torch.from_numpy(e.state)
+                actions[i, :, :] = torch.from_numpy(e.action)
+                next_states[i, :, :] = torch.from_numpy(e.next_state)
 
-                # reward and done are lists, not tensors
+                # incoming reward and done are lists, not tensors
                 rewards[i, :, :] = torch.tensor(e.reward).view(num_agents, -1)[:, :]
                 dones[i, :, :]   = torch.tensor(e.done).view(num_agents, -1)[:, :]
-                rewards.to(device)
-                dones.to(device)
 
             #print("replay_buffer.sample: states = ", states.shape)
             #print(states)

@@ -169,23 +169,23 @@ class MultiDdpgAgent:
 
         # create a next_states tensor [b, x] where each row represents the states
         # of all agents
-        next_states = next_obs.view(self.batch_size, -1)
+        next_states = next_obs.view(self.batch_size, -1).to(device)
 
         # compute the Q values for the next states/actions from the target model
-        Q_targets_next = self.critic_target(next_states, target_actions)
+        q_targets_next = self.critic_target(next_states, target_actions)
 
         # Compute Q targets for current states (y_i) for this agent
-        reward = rewards[:, agent_id, :].squeeze(dim=1).view(self.batch_size, -1)
-        done = dones[:, agent_id, :].squeeze(dim=1).view(self.batch_size, -1)
-        Q_targets = reward + gamma*Q_targets_next*(1 - done)
+        reward = rewards[:, agent_id, :].squeeze(dim=1).view(self.batch_size, -1).to(device)
+        done = dones[:, agent_id, :].squeeze(dim=1).view(self.batch_size, -1).to(device)
+        q_targets = reward + gamma*q_targets_next*(1 - done)
 
         # reshape the observations & actions so that all agents are represented on each row
-        all_agents_states = obs.view(self.batch_size, -1)
-        all_agents_actions = actions.view(self.batch_size, -1)
+        all_agents_states = obs.view(self.batch_size, -1).to(device)
+        all_agents_actions = actions.view(self.batch_size, -1).to(device)
 
         # Compute critic loss
-        Q_expected = self.critic_local(all_agents_states, all_agents_actions)
-        critic_loss = F.mse_loss(Q_expected, Q_targets)
+        q_expected = self.critic_local(all_agents_states, all_agents_actions)
+        critic_loss = F.mse_loss(q_expected, q_targets)
         #print("       critic_loss = ", critic_loss)
 
         # Minimize the loss
