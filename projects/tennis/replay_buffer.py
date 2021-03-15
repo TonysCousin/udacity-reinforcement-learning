@@ -10,6 +10,8 @@ import torch
 import random
 from collections import namedtuple, deque
 
+REWARD_THRESHOLD = 0.0 # value above which is considered a "good" performance
+
 
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
@@ -28,13 +30,28 @@ class ReplayBuffer:
         self.batch_size = batch_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
         random.seed(seed)
+        self.rewards_exceed_threshold = 0
     
     def add(self, state, action, reward, next_state, done):
         """Add a new experience to memory."""
 
+        # update count of good experiences
+        if len(self.memory) == self.buffer_size:
+            if self.memory[0].reward > REWARD_THRESHOLD:
+                self.rewards_exceed_threshold -= 1 #this item will be popped off during append
+        if reward > REWARD_THRESHOLD:
+            self.rewards_exceed_threshold += 1
+    
+        # add the experience to the deque
         e = self.experience(state, action, reward, next_state, done)
         self.memory.append(e)
-    
+
+
+    def num_rewards_exceeding_threshold(self):
+        """Returns the number of rewards in database that exceed the threshold of 'good' """
+
+        return self.rewards_exceed_threshold
+
 
     def sample(self):
         """Randomly sample a batch of experiences from memory.

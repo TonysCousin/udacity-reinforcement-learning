@@ -1,6 +1,6 @@
 # Implements the MADDPG algorithm for multiple agents, where each agent has its own
-# actor, but all agents share a critic.  The critic is a member of this class,
-# but it is updated with all actions and observations from all agents, so
+# actor, but all agents effectively share a critic.  The critic in each agent
+# is updated with all actions and observations from all agents, so
 # each agent's critic is being simultaneously updated the same way.  This is
 # not the most efficient way to do it, but for learning the basic approach it
 # is fine.  A future enhancement would be to break out a common critic object
@@ -16,23 +16,25 @@ import random
 from replay_buffer import ReplayBuffer
 from maddpg_agent  import MultiDdpgAgent
 
-# set size of replay buffer to accommodate ~4000 poorly performing episodes;
-# this will force older ones to be discarded and give some preference to episodes
-# that are successful (more time steps)
+# set size of replay buffer to accommodate ~4000 poorly performing episodes (~13 time
+# steps/episode); this will force older ones to be discarded and give some preference
+# to episodes that are successful (more time steps)
 BUFFER_SIZE = 50000
 
 
 class Maddpg:
     """Manages the training and execution of multiple agents in the same environment"""
 
-    def __init__(self, state_size, action_size, num_agents, random_seed=0, batch_size=32,
-                 noise_decay=1.0, learn_every=20, learn_iter=1):
+    def __init__(self, state_size, action_size, num_agents, bad_step_prob=0.5,
+                 random_seed=0, batch_size=32, noise_decay=1.0, learn_every=20, learn_iter=1):
         """Initialize the one and only MADDPG manager
 
         Params
             state_size (int):     number of state values for each actor
             action_size (int):    number of action values for each actor
             num_agents (int):     number of agents in the environment (all will be trained)
+            bad_step_prob (float):probability of keeping a time step experience if it generates
+                                    no reward
             random_seed (int):    random seed
             batch_size (int):     the size of each minibatch used for learning
             noise_decay (float):  multiplier on the magnitude of noise; decay is applied each time step (must be <= 1.0)
@@ -43,6 +45,7 @@ class Maddpg:
         self.state_size = state_size
         self.action_size = action_size
         self.num_agents = num_agents
+        self.bad_step_keep_prob = min(bad_step_prob, 1.0)
         random.seed(random_seed)
 
         # define simple replay memory common to all agents
@@ -78,13 +81,13 @@ class Maddpg:
 
 
     def step(self, obs, actions, rewards, next_obs, dones):
-        """Stores a new experience from the environment in replay buffer and advances
-           the agents by one time step, invoking learning if appropriate.
+        """Stores a new experience from the environment in replay buffer, if appropriate,
+           and advances the agents by one time step.
 
            Params:
                obs (ndarray of float):      the current state values for all agents, one row per agent
                actions (ndarray of float):  the current actions from all agents, one row per agent
-               rewards (list of float):     current reward earned from eadh agent
+               rewards (list of float):     current reward earned from each agent
                next_obs (ndarray of float): est of next time step's states, one row per agent
                dones (list of bool):        for each agent, is episode complete?
 
@@ -95,12 +98,26 @@ class Maddpg:
         #print("             actions = ", actions)
         #print("             rewards = ", rewards)
 
-        # add the new experience to the replay buffer
-        self.memory.add(obs, actions, rewards, next_obs, dones)
+        # if this step did not score any points, then use random draw to decide if it's a keeper
+        if max(rewards) > 0.0  or  np.random.random() < self.bad_step_keep_prob:
 
-        # advance each agent
-        for i, a in enumerate(self.agents):
-            a.step(i)
+            # add the new experience to the replay buffer
+            self.memory.add(obs, actions, rewards, next_obs, dones)
+
+            # advance each agent
+            for i, a in enumerate(self.agents):
+                a.step(i)
+
+
+    def get_memory_stats(self):
+        """Gets statistics on the replay buffer memory contents.
+
+           Return:  tuple of (size, good_exp), where size is total number
+                      of items in the buffer, and good_exp is the number of those
+                      items with a reward that exceeds the threshold of "good".
+        """
+
+        return (len(self.memory), self.memory.num_rewards_exceeding_threshold())
 
 
     def checkpoint(self, path, tag, episode):
