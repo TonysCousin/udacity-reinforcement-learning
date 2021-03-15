@@ -18,8 +18,12 @@ from maddpg_agent  import MultiDdpgAgent
 
 # set size of replay buffer to accommodate ~4000 poorly performing episodes (~13 time
 # steps/episode); this will force older ones to be discarded and give some preference
-# to episodes that are successful (more time steps)
-BUFFER_SIZE = 50000
+# to episodes that are successful (more time steps). Was 50000, need to play with smaller
+# values now that I'm ignoring some bad experiences.
+BUFFER_SIZE = 20000
+
+# initial probability of keeping "bad" episodes (until enough exist to start learning)
+BAD_STEP_KEEP_PROB_INIT = 0.5
 
 
 class Maddpg:
@@ -47,9 +51,11 @@ class Maddpg:
         self.num_agents = num_agents
         self.bad_step_keep_prob = min(bad_step_prob, 1.0)
         random.seed(random_seed)
+        self.batch_size = batch_size
 
         # define simple replay memory common to all agents
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, batch_size, random_seed)
+        self.learning_underway = False
 
         # create a list of agent objects
         self.agents = [MultiDdpgAgent(state_size, action_size, num_agents, random_seed, self.memory,
@@ -96,10 +102,18 @@ class Maddpg:
 
         #print("maddpg.step: obs = ", obs)
         #print("             actions = ", actions)
-        #print("             rewards = ", rewards)
+        #print("             rewards = ", rewards, end="")
+
+        # set up probability of keeping bad experiences based upon whether the buffer is
+        # full enough to start learning
+        if len(self.memory) > self.batch_size:
+            threshold = self.bad_step_keep_prob
+            self.learning_underway = True #let's object owner know
+        else:
+            threshold = BAD_STEP_KEEP_PROB_INIT
 
         # if this step did not score any points, then use random draw to decide if it's a keeper
-        if max(rewards) > 0.0  or  np.random.random() < self.bad_step_keep_prob:
+        if max(rewards) > 0.0  or  np.random.random() < threshold:
 
             # add the new experience to the replay buffer
             self.memory.add(obs, actions, rewards, next_obs, dones)
@@ -118,6 +132,10 @@ class Maddpg:
         """
 
         return (len(self.memory), self.memory.num_rewards_exceeding_threshold())
+
+
+    def is_learning_underway(self):
+        return self.learning_underway
 
 
     def checkpoint(self, path, tag, episode):

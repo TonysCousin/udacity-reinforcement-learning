@@ -62,6 +62,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     max_steps_experienced = 0
     recent_scores = deque(maxlen=AVG_SCORE_EXTENT)
     start_time = 0
+    first_episode_timed = -1
 
     # loop on episodes
     for e in range(starting_episode, max_episodes):
@@ -75,7 +76,8 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         # start the timer after several episodes have passed, since early ones just fill the
         # replay buffer and go quickly; once learning starts, the pace slows down, and this
         # timer is used to predict total run duration
-        if e == 80:
+        if first_episode_timed < 0  and  maddpg.is_learning_underway():
+            first_episode_timed = e
             start_time = time.perf_counter()
         #print("Top of episode {}: states = ".format(e), states) #debug
 
@@ -111,7 +113,8 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         # determine epoch duration and estimate remaining time
         current_time = time.perf_counter()
         if start_time > 0:
-            avg_duration = (current_time - start_time) / (e - starting_episode + 1) / 60.0 #minutes
+            timed_episodes = e - first_episode_timed - starting_episode + 1
+            avg_duration = (current_time - start_time) / timed_episodes / 60.0 #minutes
             remaining_time_minutes = (starting_episode + max_episodes - e - 1) * avg_duration
             rem_time = remaining_time_minutes / 60.0
             time_est_msg = "{:4.1f} hr rem".format(rem_time)
