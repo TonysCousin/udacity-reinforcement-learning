@@ -26,20 +26,28 @@ class ReplayBuffer:
         """
 
         self.action_size = action_size
+        self.buffer_size = buffer_size
         self.memory = deque(maxlen=buffer_size)  # internal memory (deque)
         self.batch_size = batch_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
         random.seed(seed)
         self.rewards_exceed_threshold = 0
     
+
     def add(self, state, action, reward, next_state, done):
-        """Add a new experience to memory."""
+        """Add a new experience to memory.
+
+           Params:
+               state, action, next_state (Tensor): [a, x] where a is number of agents, x is 
+                                                     data width for that element
+               reward, done (list): one item for each agent
+        """
 
         # update count of good experiences
         if len(self.memory) == self.buffer_size:
             if self.memory[0].reward > REWARD_THRESHOLD:
                 self.rewards_exceed_threshold -= 1 #this item will be popped off during append
-        if reward > REWARD_THRESHOLD:
+        if max(reward) > REWARD_THRESHOLD:
             self.rewards_exceed_threshold += 1
     
         # add the experience to the deque
