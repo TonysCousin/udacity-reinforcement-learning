@@ -136,7 +136,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
                       1.0/avg_duration), end="")
         if e > 0  and  e % checkpoint_interval == 0:
             maddpg.checkpoint(CHECKPOINT_PATH, run_name, e)
-            print("\r{}\tAverage Score: {:.3f}, mem: {:6d}/{:6d}, ({:4.1f}%), avg {:.1f} eps/min; {}   "
+            print("\r{}\tAverage score:   {:.3f},        mem: {:6d}/{:6d}, ({:4.1f}%), avg {:.1f} eps/min; {}   "
                   .format(e, avg_score, mem_stats[0], mem_stats[1], mem_pct,
                           1.0/avg_duration, time_est_msg))
 

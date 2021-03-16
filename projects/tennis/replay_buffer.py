@@ -45,7 +45,7 @@ class ReplayBuffer:
 
         # update count of good experiences
         if len(self.memory) == self.buffer_size:
-            if self.memory[0].reward > REWARD_THRESHOLD:
+            if max(self.memory[0].reward) > REWARD_THRESHOLD:
                 self.rewards_exceed_threshold -= 1 #this item will be popped off during append
         if max(reward) > REWARD_THRESHOLD:
             self.rewards_exceed_threshold += 1
