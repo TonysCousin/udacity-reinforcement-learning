@@ -131,7 +131,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         mem_pct = 0.0
         if mem_stats[0] > 0:
             mem_pct = min(100.0*float(mem_stats[1])/mem_stats[0], 99.9)
-        print("\r{}\tRunning avg/max: {:.3f}/{:.3f}, mem: {:6d}/{:6d} ({:4.1f}%), avg {:.1f} eps/min   "
+        print("\r{}\tRunning avg/max: {:.3f}/{:.3f},  mem: {:6d}/{:6d} ({:4.1f}%), avg {:.1f} eps/min   "
               .format(e, avg_score, max_recent, mem_stats[0], mem_stats[1], mem_pct, 
                       1.0/avg_duration), end="")
         if e > 0  and  e % checkpoint_interval == 0:

@@ -16,12 +16,6 @@ import random
 from replay_buffer import ReplayBuffer
 from maddpg_agent  import MultiDdpgAgent
 
-# set size of replay buffer to accommodate ~4000 poorly performing episodes (~13 time
-# steps/episode); this will force older ones to be discarded and give some preference
-# to episodes that are successful (more time steps). Was 50000, need to play with smaller
-# values now that I'm ignoring some bad experiences.
-BUFFER_SIZE = 20000
-
 # initial probability of keeping "bad" episodes (until enough exist to start learning)
 BAD_STEP_KEEP_PROB_INIT = 0.5
 
@@ -29,8 +23,8 @@ BAD_STEP_KEEP_PROB_INIT = 0.5
 class Maddpg:
     """Manages the training and execution of multiple agents in the same environment"""
 
-    def __init__(self, state_size, action_size, num_agents, bad_step_prob=0.5,
-                 random_seed=0, batch_size=32, noise_decay=1.0, learn_every=20, learn_iter=1):
+    def __init__(self, state_size, action_size, num_agents, bad_step_prob=0.5, random_seed=0,
+                 batch_size=32, buffer_size=1000000, noise_decay=1.0, learn_every=20, learn_iter=1):
         """Initialize the one and only MADDPG manager
 
         Params
@@ -41,6 +35,7 @@ class Maddpg:
                                     no reward
             random_seed (int):    random seed
             batch_size (int):     the size of each minibatch used for learning
+            buffer_size (int):    capacity of the experience replay buffer
             noise_decay (float):  multiplier on the magnitude of noise; decay is applied each time step (must be <= 1.0)
             learn_every (int):    number of time steps between learning sessions
             learn_iter (int):     number of learning iterations that get run during each learning session
@@ -54,7 +49,7 @@ class Maddpg:
         self.batch_size = batch_size
 
         # define simple replay memory common to all agents
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, batch_size, random_seed)
+        self.memory = ReplayBuffer(action_size, buffer_size, batch_size, random_seed)
         self.learning_underway = False
 
         # create a list of agent objects
