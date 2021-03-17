@@ -46,11 +46,14 @@ class ReplayBuffer:
         # if the buffer is already full then (we don't want to lose good experiences)
         if len(self.memory) == self.buffer_size:
 
-            # while we have a desirable reward at the left end of the deque
-            while max(self.memory[0].reward) > REWARD_THRESHOLD:
+            # if < 50% of the buffer's contents are good experiences then
+            if self.rewards_exceed_threshold < self.buffer_size//2:
 
-                # pop it off and push it back onto the right end to save it
-                self.memory.rotate(-1)
+                # while we have a desirable reward at the left end of the deque
+                while max(self.memory[0].reward) > REWARD_THRESHOLD:
+
+                    # pop it off and push it back onto the right end to save it
+                    self.memory.rotate(-1)
 
         # if the incoming experience has a good reward, then increment the count
         if max(reward) > REWARD_THRESHOLD:
