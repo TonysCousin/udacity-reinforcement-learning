@@ -1,9 +1,9 @@
-# Provides a simple replay buffer (without priority) for randomly sampling past
-# experiences.
+# Provides a fixed-size replay buffer (without true priority) for randomly sampling past
+# experiences. However, it recognizes experiences with positive rewards as valuable,
+# so will retain them when they have hit the head of the queue.
 #
-# This code is based on code provided by Udacity instructor staff
-# for the DRL nanodegree program, although the sample() method is completely
-# redesigned to be more intuitive.
+# This code is roughly based on code provided by Udacity instructor staff
+# for the DRL nanodegree program, although it has been significantly modified.
 
 import numpy as np
 import torch
@@ -43,14 +43,20 @@ class ReplayBuffer:
                reward, done (list): one item for each agent
         """
 
-        # update count of good experiences
+        # if the buffer is already full then (we don't want to lose good experiences)
         if len(self.memory) == self.buffer_size:
-            if max(self.memory[0].reward) > REWARD_THRESHOLD:
-                self.rewards_exceed_threshold -= 1 #this item will be popped off during append
+
+            # while we have a desirable reward at the left end of the deque
+            while max(self.memory[0].reward) > REWARD_THRESHOLD:
+
+                # pop it off and push it back onto the right end to save it
+                self.memory.rotate(-1)
+
+        # if the incoming experience has a good reward, then increment the count
         if max(reward) > REWARD_THRESHOLD:
             self.rewards_exceed_threshold += 1
     
-        # add the experience to the deque
+        # add the experience to the right end of the deque
         e = self.experience(state, action, reward, next_state, done)
         self.memory.append(e)
 
