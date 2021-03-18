@@ -85,8 +85,10 @@ class MultiDdpgAgent:
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(),
                                            lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
 
-        # Noise process
+        # Noise process and latches for reporting on decay progress
         self.noise = OUNoise(action_size, random_seed)
+        self.noise_level1_reported = False
+        self.noise_level2_reported = False
 
         # storage for temp analysis of actions & noise
         self.ANAL_SIZE = 10000
@@ -134,9 +136,18 @@ class MultiDdpgAgent:
                 self.anal_num += 1
             
             action += n*self.noise_mult
+
+            # handle noise multiplier decay
             self.noise_mult *= self.noise_decay
-            if self.noise_mult < 0.001:
-                self.noise_mult = 0.001
+            if self.noise_mult < 0.2:
+                if not self.noise_level1_reported:
+                    print(" *noise mult = 0.2")
+                    self.noise_level1_reported = True
+                if self.noise_mult < 0.001:
+                    self.noise_mult = 0.001
+                    if not self.noise_level2_reported:
+                        print(" *noise mult = 0.001")
+                        self.noise_level2_reported = True
 
         return np.clip(action, -1, 1)
 
