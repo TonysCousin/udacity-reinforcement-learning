@@ -17,14 +17,16 @@ from replay_buffer import ReplayBuffer
 from maddpg_agent  import MultiDdpgAgent
 
 # initial probability of keeping "bad" episodes (until enough exist to start learning)
-BAD_STEP_KEEP_PROB_INIT = 0.5
+BAD_STEP_KEEP_PROB_INIT = 0.1
 
 
 class Maddpg:
     """Manages the training and execution of multiple agents in the same environment"""
 
     def __init__(self, state_size, action_size, num_agents, bad_step_prob=0.5, random_seed=0,
-                 batch_size=32, buffer_size=1000000, noise_decay=1.0, learn_every=20, learn_iter=1):
+                 batch_size=32, buffer_size=1000000, noise_decay=1.0, noise_scale=1.0,
+                 learn_every=20, learn_iter=1, lr_actor=0.00001, lr_critic=0.000001,
+                 weight_decay=1.0e-5, gamma=0.99, tau=0.001):
         """Initialize the one and only MADDPG manager
 
         Params
@@ -36,9 +38,16 @@ class Maddpg:
             random_seed (int):    random seed
             batch_size (int):     the size of each minibatch used for learning
             buffer_size (int):    capacity of the experience replay buffer
-            noise_decay (float):  multiplier on the magnitude of noise; decay is applied each time step (must be <= 1.0)
+            noise_decay (float):  multiplier on the magnitude of noise; decay is applied each
+                                    time step (must be <= 1.0)
+            noise_scale (float):  scale factor applied to all noise, regardless of decay state
             learn_every (int):    number of time steps between learning sessions
             learn_iter (int):     number of learning iterations that get run during each learning session
+            lr_actor (float):     learning rate for each agent's actor network
+            lr_critic (float):    learning rate for each agent's critic network
+            weight_decay (float): decay rate applied to each agent's critic network optimizer
+            gamma (float):        future reward discount factor
+            tau (float):          target network soft update rate
         """
 
         self.state_size = state_size
@@ -52,10 +61,15 @@ class Maddpg:
         self.memory = ReplayBuffer(action_size, buffer_size, batch_size, random_seed)
         self.learning_underway = False
 
-        # create a list of agent objects
-        self.agents = [MultiDdpgAgent(state_size, action_size, num_agents, random_seed, self.memory,
-                                      batch_size, noise_decay, learn_every, learn_iter)
-                       for a in range(num_agents)]
+        # create a list of agent objects and set their hyperparams
+        self.agents = [None, None]
+        for a in range(num_agents):
+            self.agents[a] = MultiDdpgAgent(state_size, action_size, num_agents, random_seed,
+                                           self.memory, batch_size, noise_decay, learn_every,
+                                           learn_iter, lr_actor, lr_critic, weight_decay)
+            self.agents[a].set_hp_gamma(gamma)
+            self.agents[a].set_hp_tau(tau)
+            self.agents[a].set_hp_noise_scale(noise_scale)
 
 
     def reset(self):
@@ -103,7 +117,7 @@ class Maddpg:
         # full enough to start learning
         if len(self.memory) > self.batch_size:
             threshold = self.bad_step_keep_prob
-            self.learning_underway = True #let's object owner know
+            self.learning_underway = True #lets the object owner know
         else:
             threshold = BAD_STEP_KEEP_PROB_INIT
 
@@ -133,10 +147,13 @@ class Maddpg:
         return self.learning_underway
 
 
-    def save_anal_data(self):
+    def save_anal_data(self, tag):
         """Writes a data file for each agent in csv format. Each file has four columns,
            representing 2 action values followed by corresponding 2 noise values.  Each
            row represents a time step.
+
+           Params:
+               tag (string): a tag that will be prefixed to the filenames for easier identification.
         """
 
         for i in range(self.num_agents):
@@ -145,7 +162,7 @@ class Maddpg:
             dn = d[1] #noise
             len = min(da.shape[0], dn.shape[0])
 
-            filename = "checkpoint/agent{}_actions.csv".format(i)
+            filename = "checkpoint/{}.agent{}_actions.csv".format(tag, i)
             f = open(filename, "w")
             for j in range(len):
                 f.write("{:8.4f}, {:8.4f}, {:8.4f}, {:8.4f}\n"

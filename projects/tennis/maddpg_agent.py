@@ -23,9 +23,6 @@ from model         import Actor, Critic
 
 GAMMA = 0.99            # discount factor
 TAU = 0.001             # for soft update of target parameters
-LR_ACTOR = 0.00001       # learning rate of the actor
-LR_CRITIC = 0.0001       # learning rate of the critic
-WEIGHT_DECAY = 1e-5     # L2 weight decay
 NOISE_SCALE = 0.5       # scale factor applied to the raw noise
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -35,7 +32,8 @@ class MultiDdpgAgent:
     """Interacts with and learns from the environment and other agents in the environment."""
     
     def __init__(self, state_size, action_size, num_agents, random_seed, replay_buf,
-                 batch_size=32, noise_decay=1.0, learn_every=20, learn_iter=1):
+                 batch_size=32, noise_decay=1.0, learn_every=20, learn_iter=1,
+                 lr_actor=0.00001, lr_critic=0.000001, weight_decay=1.0e-5):
         """Initialize an Agent object.
         
         Params
@@ -50,6 +48,9 @@ class MultiDdpgAgent:
             learn_every (int):         number of time steps between learning sessions
             learn_iter (int):          number of learning iterations that get run during each
                                          learning session
+            lr_actor (float):          learning rate for the actor network
+            lr_critic (float):         learning rate for the critic network
+            weight_decay (float):      weight decay rate for the critic optimizer
         """
 
         # don't seed the random package here; assume it has been done by caller
@@ -75,7 +76,7 @@ class MultiDdpgAgent:
                                   fc1_units=layer1_units, fc2_units=layer2_units).to(device)
         self.actor_target = Actor(state_size, action_size, random_seed,
                                   fc1_units=layer1_units, fc2_units=layer2_units).to(device)
-        self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=LR_ACTOR)
+        self.actor_optimizer = optim.Adam(self.actor_local.parameters(), lr=lr_actor)
 
         # Critic Network (w/ Target Network)
         self.critic_local  = Critic(num_agents*state_size, num_agents*action_size, random_seed,
@@ -83,26 +84,43 @@ class MultiDdpgAgent:
         self.critic_target = Critic(num_agents*state_size, num_agents*action_size, random_seed,
                                     fcs1_units=layer1_units, fc2_units=layer2_units).to(device)
         self.critic_optimizer = optim.Adam(self.critic_local.parameters(),
-                                           lr=LR_CRITIC, weight_decay=WEIGHT_DECAY)
+                                           lr=lr_critic, weight_decay=weight_decay)
 
         # Noise process and latches for reporting on decay progress
         self.noise = OUNoise(action_size, random_seed)
         self.noise_level1_reported = False
         self.noise_level2_reported = False
 
-        # storage for temp analysis of actions & noise
-        self.ANAL_SIZE = 10000
-        self.anal_actions = np.zeros((self.ANAL_SIZE, 2))
-        self.anal_noise   = np.zeros((self.ANAL_SIZE, 2))
-        self.anal_num = 0
+        # storage for temp analysis of actions & noise; allow room for 3 separate collection sequences
+        self.ANAL_SIZE = 200 #number time steps in a sequence
+        self.anal_actions = np.zeros((3*self.ANAL_SIZE, 2))
+        self.anal_noise   = np.zeros((3*self.ANAL_SIZE, 2))
+        self.anal_total_steps = 0 #total time steps since beginning of time
+        self.anal_num = 0 #how many in the current sequence have been captured
+        self.anal_seq_starts = [0, 10000, 20000]
+        self.anal_cur_seq = 0
 
     
+    """Setters for the several hyperparameter "constants" defined at top of file."""
+
+    def set_hp_gamma(self, gamma):
+        global GAMMA
+        GAMMA = gamma
+
+    def set_hp_tau(self, tau):
+        global TAU
+        TAU = tau
+def set_hp_noise_scale(self, scale): global NOISE_SCALE
+        NOISE_SCALE = scale
+
+
     def step(self, agent_id):
         """Use a random sample from buffer to learn.
 
            Params:
               agent_id (int): index of this agent in the replay arrays (values 0..N)
         """
+
 
         # Learn, if enough samples are available in memory, but only occasionally
         self.learn_control += 1
@@ -128,13 +146,29 @@ class MultiDdpgAgent:
             #print("act: action = ", action)
             #print("     noise  = ", n)
 
-            # save the raw actions and noise values from this agent for analysis
-            if self.anal_num < self.ANAL_SIZE:
+            # if current time step > current seq start and num steps < seq size
+            if self.anal_cur_seq < len(self.anal_seq_starts)
+               and  self.anal_total_steps > self.anal_seq_starts[self.anal_cur_seq]
+               and  self.anal_num < self.ANAL_SIZE:
+
+                # save the raw actions and noise values from this agent for analysis
                 for j in range(2):
                     self.anal_actions[self.anal_num, j] = action[j]
                     self.anal_noise[self.anal_num, j]   = n[j] 
+
+                # increment both time step counters
                 self.anal_num += 1
-            
+                self.anal_total_steps += 1
+
+                # if num steps == seq size then
+                if self.anal_num == self.ANAL_SIZE:
+
+                    print("Noise collect done: cur_seq = {}, num = {}, total_steps = {}"
+                          .format(self.anal_cur_seq, self.anal_num, self.anal_total_steps))
+                    # advance seq index and reset the num steps counter
+                    self.anal_cur_seq += 1
+                    self.anal_num = 0
+
             action += n*self.noise_mult
 
             # handle noise multiplier decay
