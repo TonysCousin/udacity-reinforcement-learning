@@ -133,6 +133,26 @@ class Maddpg:
         return self.learning_underway
 
 
+    def save_anal_data(self):
+        """Writes a data file for each agent in csv format. Each file has four columns,
+           representing 2 action values followed by corresponding 2 noise values.  Each
+           row represents a time step.
+        """
+
+        for i in range(self.num_agents):
+            d = self.agents[i].get_anal_data()
+            da = d[0] #actions
+            dn = d[1] #noise
+            len = min(da.shape[0], dn.shape[0])
+
+            filename = "checkpoint/agent{}_actions.csv".format(i)
+            f = open(filename, "w")
+            for j in range(len):
+                f.write("{:8.4f}, {:8.4f}, {:8.4f}, {:8.4f}\n"
+                        .format(da[j][0], da[j][1], dn[j][0], dn[j][1]))
+            f.close()
+
+
     def checkpoint(self, path, tag, episode):
         """Saves checkpoint files for each of the networks.
 

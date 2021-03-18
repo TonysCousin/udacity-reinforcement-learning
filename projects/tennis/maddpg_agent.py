@@ -39,7 +39,6 @@ class MultiDdpgAgent:
         """Initialize an Agent object.
         
         Params
-        ======
             state_size (int):          number of state values for this agent
             action_size (int):         number of action values for this agent
             num_agents (int):          number of agents in the whole environment
@@ -89,6 +88,12 @@ class MultiDdpgAgent:
         # Noise process
         self.noise = OUNoise(action_size, random_seed)
 
+        # storage for temp analysis of actions & noise
+        self.ANAL_SIZE = 10000
+        self.anal_actions = np.zeros((self.ANAL_SIZE, 2))
+        self.anal_noise   = np.zeros((self.ANAL_SIZE, 2))
+        self.anal_num = 0
+
     
     def step(self, agent_id):
         """Use a random sample from buffer to learn.
@@ -118,14 +123,27 @@ class MultiDdpgAgent:
         # add noise with gradual decay
         if add_noise:
             n = self.noise.sample() * NOISE_SCALE
-            #print("act: action = ", action) #debug
+            #print("act: action = ", action)
             #print("     noise  = ", n)
+
+            # save the raw actions and noise values from this agent for analysis
+            if self.anal_num < self.ANAL_SIZE:
+                for j in range(2):
+                    self.anal_actions[self.anal_num, j] = action[j]
+                    self.anal_noise[self.anal_num, j]   = n[j] 
+                self.anal_num += 1
+            
             action += n*self.noise_mult
             self.noise_mult *= self.noise_decay
             if self.noise_mult < 0.001:
                 self.noise_mult = 0.001
 
         return np.clip(action, -1, 1)
+
+
+    def get_anal_data(self):
+        return (self.anal_actions, self.anal_noise)
+
 
     def reset(self):
         """Reset the noise generator."""
