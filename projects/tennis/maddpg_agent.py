@@ -91,14 +91,18 @@ class MultiDdpgAgent:
         self.noise_level1_reported = False
         self.noise_level2_reported = False
 
-        # storage for temp analysis of actions & noise; allow room for 3 separate collection sequences
+        # storage for temp analysis of actions & noise;
+        # allow room for 3 separate collection sequences
         self.ANAL_SIZE = 200 #number time steps in a sequence
         self.anal_actions = np.zeros((3*self.ANAL_SIZE, 2))
         self.anal_noise   = np.zeros((3*self.ANAL_SIZE, 2))
         self.anal_total_steps = 0 #total time steps since beginning of time
         self.anal_num = 0 #how many in the current sequence have been captured
-        self.anal_seq_starts = [0, 10000, 20000]
+        self.anal_seq_starts = [0, 100000, 200000] #near 10k & 20k episodes
         self.anal_cur_seq = 0
+
+        # flag for printing the model weights on the indicated time step if > 0
+        self.model_display_step = 0
 
     
     """Setters for the several hyperparameter "constants" defined at top of file."""
@@ -110,8 +114,13 @@ class MultiDdpgAgent:
     def set_hp_tau(self, tau):
         global TAU
         TAU = tau
-def set_hp_noise_scale(self, scale): global NOISE_SCALE
+
+    def set_hp_noise_scale(self, scale):
+        global NOISE_SCALE
         NOISE_SCALE = scale
+
+    def set_model_display_step(self, step):
+        self.model_display_step = step
 
 
     def step(self, agent_id):
@@ -140,35 +149,50 @@ def set_hp_noise_scale(self, scale): global NOISE_SCALE
             action = self.actor_local(state).cpu().data.numpy()
         self.actor_local.train()
 
+        #---------- the core functionality of this method ends here; the remainder
+        #           is applying noise and facilitating debugging analysis
+
         # add noise with gradual decay
         if add_noise:
             n = self.noise.sample() * NOISE_SCALE
-            #print("act: action = ", action)
-            #print("     noise  = ", n)
 
-            # if current time step > current seq start and num steps < seq size
-            if self.anal_cur_seq < len(self.anal_seq_starts)
-               and  self.anal_total_steps > self.anal_seq_starts[self.anal_cur_seq]
+            # if a model display step is defined, then spill their guts
+            if self.model_display_step > 0 \
+               and  self.anal_total_steps == self.model_display_step:
+
+               print("\n\nActor network weights:\n")
+               for p in self.actor_local.parameters():
+                   print(p.shape, ", max magnitude = ", torch.max(torch.abs(p)))
+                   #print(p)
+               print("\n\nCritic network weights:\n")
+               for p in self.critic_local.parameters():
+                   print(p.shape, ", max magnitude = ", torch.max(torch.abs(p)))
+                   #print(p)
+
+            # if current time step >= current seq start and num steps < seq size
+            if self.anal_cur_seq < len(self.anal_seq_starts) \
+               and  self.anal_total_steps >= self.anal_seq_starts[self.anal_cur_seq] \
                and  self.anal_num < self.ANAL_SIZE:
 
                 # save the raw actions and noise values from this agent for analysis
+                offset = self.anal_cur_seq*self.ANAL_SIZE
                 for j in range(2):
-                    self.anal_actions[self.anal_num, j] = action[j]
-                    self.anal_noise[self.anal_num, j]   = n[j] 
+                    self.anal_actions[offset + self.anal_num, j] = action[j]
+                    self.anal_noise[offset + self.anal_num, j]   = n[j] 
 
-                # increment both time step counters
+                # increment the sequence time step counter
                 self.anal_num += 1
-                self.anal_total_steps += 1
 
                 # if num steps == seq size then
                 if self.anal_num == self.ANAL_SIZE:
 
-                    print("Noise collect done: cur_seq = {}, num = {}, total_steps = {}"
-                          .format(self.anal_cur_seq, self.anal_num, self.anal_total_steps))
                     # advance seq index and reset the num steps counter
                     self.anal_cur_seq += 1
                     self.anal_num = 0
 
+            self.anal_total_steps += 1
+
+            # apply the noise to the action output
             action += n*self.noise_mult
 
             # handle noise multiplier decay
@@ -177,10 +201,10 @@ def set_hp_noise_scale(self, scale): global NOISE_SCALE
                 if not self.noise_level1_reported:
                     print(" *noise mult = 0.2")
                     self.noise_level1_reported = True
-                if self.noise_mult < 0.001:
-                    self.noise_mult = 0.001
+                if self.noise_mult < 0.0005:
+                    self.noise_mult = 0.0005
                     if not self.noise_level2_reported:
-                        print(" *noise mult = 0.001")
+                        print(" *noise mult = 0.0005")
                         self.noise_level2_reported = True
 
         return np.clip(action, -1, 1)

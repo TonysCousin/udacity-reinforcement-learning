@@ -26,7 +26,7 @@ class Maddpg:
     def __init__(self, state_size, action_size, num_agents, bad_step_prob=0.5, random_seed=0,
                  batch_size=32, buffer_size=1000000, noise_decay=1.0, noise_scale=1.0,
                  learn_every=20, learn_iter=1, lr_actor=0.00001, lr_critic=0.000001,
-                 weight_decay=1.0e-5, gamma=0.99, tau=0.001):
+                 weight_decay=1.0e-5, gamma=0.99, tau=0.001, model_display_step=0):
         """Initialize the one and only MADDPG manager
 
         Params
@@ -48,6 +48,8 @@ class Maddpg:
             weight_decay (float): decay rate applied to each agent's critic network optimizer
             gamma (float):        future reward discount factor
             tau (float):          target network soft update rate
+            model_display_step (int): time step (through all episodes) on which NN weights are
+                                    to be printed; if <= 0 then no printing will occur
         """
 
         self.state_size = state_size
@@ -70,6 +72,7 @@ class Maddpg:
             self.agents[a].set_hp_gamma(gamma)
             self.agents[a].set_hp_tau(tau)
             self.agents[a].set_hp_noise_scale(noise_scale)
+            self.agents[a].set_model_display_step(model_display_step)
 
 
     def reset(self):
