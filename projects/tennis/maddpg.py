@@ -173,17 +173,96 @@ class Maddpg:
             f.close()
 
 
-    def checkpoint(self, path, tag, episode):
-        """Saves checkpoint files for each of the networks.
+    def save_checkpoint(self, path, tag, episode):
+        """Saves checkpoint files for each of the networks.  This version stores the 'new'
+           (non-legacy) format.
 
            Params:
                path (string): directory path where the files will go (if not None, needs to end in /)
                tag (string):  an aribitrary tag to distinguish this set of networks (e.g. test ID)
                episode (int): the episode number
+
+           For info on file structure, see the description of restore_checkpoint(), below.
         """
 
+        checkpoint = {}
         for i, a in enumerate(self.agents):
-            torch.save(a.actor_local.state_dict(), "{}{}_actor{}_{:d}.pt"
-                       .format(path, tag, i, episode))
-            torch.save(a.critic_local.state_dict(), "{}{}_critic{}_{:d}.pt"
-                       .format(path, tag, i, episode))
+            key_a = "actor{}".format(i)
+            key_c = "critic{}".format(i)
+            key_oa = "optimizer_actor{}".format(i)
+            key_oc = "optimizer_critic{}".format(i)
+            checkpoint[key_a] = self.agents[i].actor_local.state_dict()
+            checkpoint[key_c] = self.agents[i].critic_local.state_dict()
+            checkpoint[key_oa] = self.agents[i].actor_optimizer.state_dict()
+            checkpoint[key_oc] = self.agents[i].critic_optimizer.state_dict()
+
+        # TODO: figure out how to store the buffer also (error on attribute lookup)
+        #checkpoint["replay_buffer"] = self.memory
+ 
+        filename = "{}{}_{}.pt".format(path, tag, episode)
+        torch.save(checkpoint, filename)
+
+
+    def restore_checkpoint(self, path_root, tag, episode, legacy=False):
+        """Loads data from a checkpoint for continued training.
+           MUST be called AFTER defining the MultiDdptAgent objects, optimizers and
+           replay buffer.
+
+           Params:
+               path_root (string): directory path of the root dir above which the checkpoint
+                                     is saved. Assumes all checkpoints are in a subdir named
+                                     the same as the tag. Assumed to end in '/'
+               tag (string):       tag that distinguishes this set of networks/runs
+               episode (int):      the episode number when the checkpoint was stored
+               legacy (bool):      should we use the legacy file structure?
+
+               Assumes checkpoint filenames are all <tag>.<run>_[networkname_]<episode>.pt
+               where networkname is used only for legacy formats, as those have separate
+               files for each network.  Legacy checkpoints are comprised of 4 files, where
+               networkname is either "actor0", "actor1", "critic0" or "critic1". Each file
+               is just that network.  There is no optimizer or replay buffer stored.  New
+               checkpoints are saved as a single file for the entire model, which is
+               structured as a dictionary containing the following fields:
+                 actor0
+                 actor1
+                 critic0
+                 critic1
+                 optimizer_actor0
+                 optimizer_actor1
+                 optimizer_critic0
+                 optimizer_critic1
+                 replay_buffer
+               Each field except the replay_buffer holds a state_dict.
+        """
+
+        #---------- load legacy checkpoints
+
+        if legacy:
+            for i, a in enumerate(self.agents):
+                filename_a = "{}{}_actor{}_{}.pt" \
+                             .format(path_root, tag, i, episode)
+                filename_c = "{}{}_critic{}_{}.pt" \
+                             .format(path_root, tag, i, episode)
+
+                self.agents[i].actor_local.load_state_dict(torch.load(filename_a))
+                self.agents[i].critic_local.load_state_dict(torch.load(filename_c))
+
+        #----------- load new style checkpoints
+
+        else:
+            filename = "{}{}_{}.pt".format(path_root, tag, episode)
+            checkpoint = torch.load(filename)
+
+            for i, a in enumerate(self.agents):
+                key_a = "actor{}".format(i)
+                key_c = "critic{}".format(i)
+                key_oa = "optimizer_actor{}".format(i)
+                key_oc = "optimizer_critic{}".format(i)
+                self.agents[i].actor_local.load_state_dict(checkpoint[key_a])
+                self.agents[i].critic_local.load_state_dict(checkpoint[key_c])
+                self.agents[i].actor_optimizer.load_state_dict(checkpoint[key_oa])
+                self.agents[i].critic_optimizer.load_state_dict(checkpoint[key_oc])
+
+            #self.memory = checkpoint['replay_buffer']
+
+        print("Checkpoint loaded for {}, episode {}".format(tag, episode))

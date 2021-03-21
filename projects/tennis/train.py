@@ -1,19 +1,5 @@
 # Performs the training of both agents for the Tennis project, based on the Unity ML-Agents
 # simulation environment.
-#
-# Parameters:
-# maddpg (Maddpg):           the MADDPG manager object that manages the game play
-# env (UnityEnvironment):    the Unity game environment
-# run_name (string):         an arbitrary identifier used in the results output and checkpoint
-#                              filenames
-# max_episodes (int):        max number of episodes to train before forced to give up
-# max_time_steps (int):      max number of time steps in each episode
-# sleeping (bool):           do we desire a pause after each episode? (helpful for visualizing)
-# winning_score (float):     target reward that needs to be exceeded over 100 consecutive episodes
-#                              to consider training complete [float]
-# checkpoint_interval (int): number of episodes between checkpoint storage
-#
-# Returns: list of scores (rewards) from each episode (list of int)
 
 import numpy as np
 import torch
@@ -135,7 +121,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
               .format(e, avg_score, max_recent, mem_stats[0], mem_stats[1], mem_pct, 
                       1.0/avg_duration), end="")
         if e > 0  and  e % checkpoint_interval == 0:
-            maddpg.checkpoint(CHECKPOINT_PATH, run_name, e)
+            maddpg.save_checkpoint(CHECKPOINT_PATH, run_name, e)
             print("\r{}\tAverage score:   {:.3f},        mem: {:6d}/{:6d} ({:4.1f}%), avg {:.1f} eps/min; {}   "
                   .format(e, avg_score, mem_stats[0], mem_stats[1], mem_pct,
                           1.0/avg_duration, time_est_msg))
@@ -148,7 +134,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         if e > 100  and  avg_score >= winning_score:
             print("\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}"
                   .format(e, avg_score))
-            maddpg.checkpoint(CHECKPOINT_PATH, run_name, e)
+            maddpg.save_checkpoint(CHECKPOINT_PATH, run_name, e)
             break
 
     print("\nAvg/max time steps/episode = {:.1f}/{:d}"
