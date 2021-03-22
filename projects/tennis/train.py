@@ -55,7 +55,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         
         # Reset the enviroment & agents and get the initial state of environment & agents
         env_info = env.reset(train_mode=True)[brain_name]
-        states = env_info.vector_observations #returns tensor(2, state_size)
+        states = env_info.vector_observations #returns ndarray(2, state_size)
         score = 0 #total score for this episode
         maddpg.reset()
 
@@ -65,31 +65,25 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         if first_episode_timed < 0  and  maddpg.is_learning_underway():
             first_episode_timed = e
             start_time = time.perf_counter()
-        #print("Top of episode {}: states = ".format(e), states) #debug
 
         # loop over time steps
         for i in range(max_time_steps):
 
-            # Predict the best actions for the current state and store them in a single tensor
+            # Predict the best actions for the current state and store them in a single ndarray
             actions = maddpg.act(states) #returns ndarray, one row for each agent
-            #print("train: actions = ", actions, type(actions)) #debug
 
             # get the new state & reward based on this action
             env_info = env.step(actions)[brain_name]
             next_states = env_info.vector_observations #returns ndarray, one row for each agent
             rewards = env_info.rewards #returns list of floats, one for each agent
             dones = env_info.local_done #returns list of bools, one for each agent
-            #print("      next_states = ", next_states, type(next_states)) #debug
-            #print("      rewards = ", rewards, type(rewards))
-            #print("      dones = ", dones, type(dones))
 
             # update the agents with this new info
             maddpg.step(states, actions, rewards, next_states, dones) 
 
             # roll over new state and check for episode completion
             states = next_states
-            score += np.max(rewards) #use the highest reward from the agents
-            #print("       score = ", score) #debug
+            score += np.max(rewards) #use the highest reward from all agents
             if np.any(dones):
                 sum_steps += i
                 if i > max_steps_experienced:

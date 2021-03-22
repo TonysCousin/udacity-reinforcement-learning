@@ -130,7 +130,6 @@ class MultiDdpgAgent:
               agent_id (int): index of this agent in the replay arrays (values 0..N)
         """
 
-
         # Learn, if enough samples are available in memory, but only occasionally
         self.learn_control += 1
         if len(self.memory) > self.batch_size  and  self.learn_control > self.learn_every:
@@ -163,11 +162,9 @@ class MultiDdpgAgent:
                print("\n\nActor network weights:\n")
                for p in self.actor_local.parameters():
                    print(p.shape, ", max magnitude = ", torch.max(torch.abs(p)))
-                   #print(p)
                print("\n\nCritic network weights:\n")
                for p in self.critic_local.parameters():
                    print(p.shape, ", max magnitude = ", torch.max(torch.abs(p)))
-                   #print(p)
 
             # if current time step >= current seq start and num steps < seq size
             if self.anal_cur_seq < len(self.anal_seq_starts) \
@@ -219,6 +216,7 @@ class MultiDdpgAgent:
 
         self.noise.reset()
 
+
     def learn(self, experiences, gamma, agent_id):
         """Update policy and value parameters using given batch of experience tuples.
            Q_targets = r + γ * critic_target(next_state, actor_target(next_state))
@@ -235,13 +233,8 @@ class MultiDdpgAgent:
                gamma (float): discount factor
         """
 
-        # extract the elements of the replayed experience row
+        # extract the elements of the replayed batch of experiences
         obs, actions, rewards, next_obs, dones = experiences
-        #print("learn: obs = ", obs)
-        #print("       rewards = ", rewards, rewards.shape)
-        #print("       next_obs = ", next_obs)
-        #print("       dones = ", dones, dones.shape)
-        #print("       actions = ", actions)
 
 
         # ---------------------------- update critic ---------------------------- #
@@ -273,7 +266,6 @@ class MultiDdpgAgent:
         # Compute critic loss
         q_expected = self.critic_local(all_agents_states, all_agents_actions)
         critic_loss = F.mse_loss(q_expected, q_targets)
-        #print("       critic_loss = ", critic_loss)
 
         # Minimize the loss
         self.critic_optimizer.zero_grad()
@@ -288,7 +280,7 @@ class MultiDdpgAgent:
         for i in range(self.num_agents):
             s = obs[:, i, :].to(device)
             actions_pred[:, i*self.action_size:(i+1)*self.action_size] = self.actor_local(s)
-        actor_loss = -self.critic_local(all_agents_states, actions_pred).mean() #can't detach()
+        actor_loss = -self.critic_local(all_agents_states, actions_pred).mean()
 
         # Minimize the loss
         self.actor_optimizer.zero_grad()

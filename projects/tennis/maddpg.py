@@ -11,13 +11,13 @@
 
 import numpy as np
 import torch
-import random
+from numpy.random import default_rng
 
 from replay_buffer import ReplayBuffer
 from maddpg_agent  import MultiDdpgAgent
 
 # initial probability of keeping "bad" episodes (until enough exist to start learning)
-BAD_STEP_KEEP_PROB_INIT = 0.1
+BAD_STEP_KEEP_PROB_INIT = 1.0
 
 
 class Maddpg:
@@ -42,7 +42,8 @@ class Maddpg:
                                     time step (must be <= 1.0)
             noise_scale (float):  scale factor applied to all noise, regardless of decay state
             learn_every (int):    number of time steps between learning sessions
-            learn_iter (int):     number of learning iterations that get run during each learning session
+            learn_iter (int):     number of learning iterations that get run during each
+                                    learning session
             lr_actor (float):     learning rate for each agent's actor network
             lr_critic (float):    learning rate for each agent's critic network
             weight_decay (float): decay rate applied to each agent's critic network optimizer
@@ -56,7 +57,7 @@ class Maddpg:
         self.action_size = action_size
         self.num_agents = num_agents
         self.bad_step_keep_prob = min(bad_step_prob, 1.0)
-        random.seed(random_seed)
+        self.rng = default_rng(random_seed)
         self.batch_size = batch_size
 
         # define simple replay memory common to all agents
@@ -83,7 +84,9 @@ class Maddpg:
 
 
     def act(self, states, add_noise=True):
-        """Invokes each agent to perform an inference step using its current policy
+        """Invokes each agent to compute desired agents using its current policy.
+           However, it will generate random actions to prime the replay buffer until a
+           batch-full of experiences is stored. At that point learning can begin.
 
            Params:
                states (tuple of float tensors):  the state values for all agents
@@ -93,8 +96,19 @@ class Maddpg:
         """
 
         actions = np.zeros((self.num_agents, self.action_size))
-        for i, agent in enumerate(self.agents):
-            actions[i, :] = agent.act(states[i], add_noise)
+
+        # if learning is underway (replay buffer is sufficiently populated), then compute
+        # actions based on the agent policies
+        if self.learning_underway:
+            for i, agent in enumerate(self.agents):
+                actions[i, :] = agent.act(states[i], add_noise)
+
+        # else, prime the replay buffer with random actions that uniformly cover the full 
+        # range of action space
+        else:
+            for i, agent in enumerate(self.agents):
+                actions[i, :] = torch.from_numpy(2.0 * self.rng.random((1, self.num_agents)) - 1.0)
+
         return actions
 
 
@@ -103,18 +117,16 @@ class Maddpg:
            and advances the agents by one time step.
 
            Params:
-               obs (ndarray of float):      the current state values for all agents, one row per agent
-               actions (ndarray of float):  the current actions from all agents, one row per agent
+               obs (ndarray of float):      the current state values for all agents, one
+                                              row per agent
+               actions (ndarray of float):  the current actions from all agents, one row
+                                              per agent
                rewards (list of float):     current reward earned from each agent
                next_obs (ndarray of float): est of next time step's states, one row per agent
                dones (list of bool):        for each agent, is episode complete?
 
            Return:  none
         """
-
-        #print("maddpg.step: obs = ", obs)
-        #print("             actions = ", actions)
-        #print("             rewards = ", rewards, end="")
 
         # set up probability of keeping bad experiences based upon whether the buffer is
         # full enough to start learning
@@ -125,7 +137,7 @@ class Maddpg:
             threshold = BAD_STEP_KEEP_PROB_INIT
 
         # if this step did not score any points, then use random draw to decide if it's a keeper
-        if max(rewards) > 0.0  or  np.random.random() < threshold:
+        if max(rewards) > 0.0  or  self.rng.random() < threshold:
 
             # add the new experience to the replay buffer
             self.memory.add(obs, actions, rewards, next_obs, dones)
@@ -156,7 +168,8 @@ class Maddpg:
            row represents a time step.
 
            Params:
-               tag (string): a tag that will be prefixed to the filenames for easier identification.
+               tag (string): a tag that will be prefixed to the filenames for easier
+                               identification.
         """
 
         for i in range(self.num_agents):
