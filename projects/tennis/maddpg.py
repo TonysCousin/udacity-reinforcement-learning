@@ -1,3 +1,10 @@
+# -------- HEY JOHN:
+
+
+
+# UPDATE THE DESCRIPTION HERE...
+
+
 # Implements the MADDPG algorithm for multiple agents, where each agent has its own
 # actor, but all agents effectively share a critic.  The critic in each agent
 # is updated with all actions and observations from all agents, so
@@ -11,13 +18,19 @@
 
 import numpy as np
 import torch
+import torch.nn.functional as F
+import torch.optim as optim
 from numpy.random import default_rng
+import copy
 
+from model         import Actor, Critic
+from ou_noise      import OUNoise
 from replay_buffer import ReplayBuffer
-from maddpg_agent  import MultiDdpgAgent
 
 # initial probability of keeping "bad" episodes (until enough exist to start learning)
 BAD_STEP_KEEP_PROB_INIT = 1.0
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Maddpg:
@@ -59,33 +72,66 @@ class Maddpg:
         self.bad_step_keep_prob = min(bad_step_prob, 1.0)
         self.rng = default_rng(random_seed)
         self.batch_size = batch_size
+        self.noise_decay = min(noise_decay, 1.0)
+        self.noise_scale = noise_scale
+        self.learn_every = learn_every
+        self.learn_iter = learn_iter
+        self.lr_actor = lr_actor
+        self.lr_critic = lr_critic
+        self.weight_decay = weight_decay
+        self.gamma = gamma
+        self.tau = tau
+        self.model_display_step = model_display_step
+
+        # initialize other internal things
+        self.noise_mult = 1.0 # the multiplier that will get decayed
+        self.learn_control = 0 #counts iterations between learning sessions
+        layer1_units = 400
+        layer2_units = 256
 
         # define simple replay memory common to all agents
         self.memory = ReplayBuffer(action_size, buffer_size, batch_size, random_seed)
         self.learning_underway = False
 
-        # create a list of agent objects and set their hyperparams
-        self.agents = [None, None]
-        for a in range(num_agents):
-            self.agents[a] = MultiDdpgAgent(state_size, action_size, num_agents, random_seed,
-                                           self.memory, batch_size, noise_decay, learn_every,
-                                           learn_iter, lr_actor, lr_critic, weight_decay)
-            self.agents[a].set_hp_gamma(gamma)
-            self.agents[a].set_hp_tau(tau)
-            self.agents[a].set_hp_noise_scale(noise_scale)
-            self.agents[a].set_model_display_step(model_display_step)
+        # create the actor networks
+        self.actor_policy = []
+        self.actor_target = []
+        self.actor_optimizer = []
+        for i in range(num_agents):
+            self.actor_policy.append(Actor(state_size, action_size, random_seed,
+                                           fc1_units=layer1_units, fc2_units=layer2_units) \
+                                          .to(device))
+            self.actor_target.append(Actor(state_size, action_size, random_seed,
+                                           fc1_units=layer1_units, fc2_units=layer2_units) \
+                                          .to(device))
+            self.actor_optimizer.append(optim.Adam(self.actor_policy[i].parameters(),
+                                                   lr=lr_actor))
+
+        # create the common critic networks
+        self.critic_policy = Critic(num_agents*state_size, num_agents*action_size,
+                                    random_seed, fcs1_units=layer1_units,
+                                    fcs2_units=layer2_units).to(device)
+        self.critic_target = Critic(num_agents*state_size, num_agents*action_size,
+                                    random_seed, fcs1_units=layer1_units,
+                                    fcs2_units=layer2_units).to(device)
+        self.critic_optimizer = optim.Adam(self.critic_policy.parameters(), lr=lr_critic,
+                                           weight_decay=weight_decay)
+
+        # noise process & latches for decay reporting
+        self.noise = OUNoise(action_size, random_seed)
+        self.noise_level1_reported = False
+        self.noise_level2_reported = False
 
 
     def reset(self):
         """Resets all agents to an initial state to begin another episode"""
 
-        for a in self.agents:
-            a.reset()
+        self.noise.reset()
 
 
     def act(self, states, add_noise=True):
-        """Invokes each agent to compute desired agents using its current policy.
-           However, it will generate random actions to prime the replay buffer until a
+        """Computes the action of each agent using its current policy.  However, it will
+           initially generate random actions to prime the replay buffer until a
            batch-full of experiences is stored. At that point learning can begin.
 
            Params:
@@ -101,12 +147,36 @@ class Maddpg:
         # actions based on the agent policies
         if self.learning_underway:
             for i, agent in enumerate(self.agents):
-                actions[i, :] = agent.act(states[i], add_noise)
+
+                # get the raw action
+                state = torch.from_numpy(states[i]).float().to(device)
+                self.actor_policy[i].eval()
+                with torch.no_grad():
+                    action = self.actor_policy[i](state).cpu().data.numpy()
+                self.actor_policy[i].train()
+
+                # add noise if appropriate, and decay it
+                if add_noise:
+                    n = self.noise.sample() * NOISE_SCALE
+                    action += n * self.noise_mult
+                    self.noise_mult *= self.noise_decay
+                    if self.noise_mult < 0.2:
+                        if not self.noise_level1_reported:
+                            print("\n* noise mult = 0.2")
+                            self.noise_level1_reported = True
+                        if self.noise_mult < 0.0005:
+                            self.noise_mult = 0.0005
+                            if not self.noise_level2_reported:
+                                print("\n* noise mult = 0.0005")
+                                self.noise_level2_reported = True
+
+
+                actions[i, :] = np.clip(action, -1.0, 1.0)
 
         # else, prime the replay buffer with random actions that uniformly cover the full 
         # range of action space
         else:
-            for i, agent in enumerate(self.agents):
+            for i in range(self.num_agents):
                 actions[i, :] = torch.from_numpy(2.0 * self.rng.random((1, self.num_agents)) - 1.0)
 
         return actions
@@ -132,7 +202,7 @@ class Maddpg:
         # full enough to start learning
         if len(self.memory) > self.batch_size:
             threshold = self.bad_step_keep_prob
-            self.learning_underway = True #lets the object owner know
+            self.learning_underway = True
         else:
             threshold = BAD_STEP_KEEP_PROB_INIT
 
@@ -143,8 +213,18 @@ class Maddpg:
             self.memory.add(obs, actions, rewards, next_obs, dones)
 
             # advance each agent
-            for i, a in enumerate(self.agents):
-                a.step(i)
+            self.learn_control += 1
+            if len(self.memory) > self.batch_size  and  self.learn_control > self.learn_every:
+                self.learn_control = 0
+                for j in range(self.learn_iterations):
+                    experiences = self.memory.sample()
+                    self.learn(experiences, GAMMA, agent_id)
+
+
+    def learn(
+
+
+    def soft_update(
 
 
     def get_memory_stats(self):
@@ -160,30 +240,6 @@ class Maddpg:
 
     def is_learning_underway(self):
         return self.learning_underway
-
-
-    def save_anal_data(self, tag):
-        """Writes a data file for each agent in csv format. Each file has four columns,
-           representing 2 action values followed by corresponding 2 noise values.  Each
-           row represents a time step.
-
-           Params:
-               tag (string): a tag that will be prefixed to the filenames for easier
-                               identification.
-        """
-
-        for i in range(self.num_agents):
-            d = self.agents[i].get_anal_data()
-            da = d[0] #actions
-            dn = d[1] #noise
-            len = min(da.shape[0], dn.shape[0])
-
-            filename = "checkpoint/{}.agent{}_actions.csv".format(tag, i)
-            f = open(filename, "w")
-            for j in range(len):
-                f.write("{:8.4f}, {:8.4f}, {:8.4f}, {:8.4f}\n"
-                        .format(da[j][0], da[j][1], dn[j][0], dn[j][1]))
-            f.close()
 
 
     def save_checkpoint(self, path, tag, episode):
