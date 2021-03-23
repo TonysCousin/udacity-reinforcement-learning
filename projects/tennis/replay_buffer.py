@@ -65,7 +65,6 @@ class ReplayBuffer:
 
                 # reduce the prime count
                 self.num_primes -= 1
-                if self.num_primes == 0:
 
         # if number of entries < batch size, then count the entry as a prime
         if len(self.memory) < self.batch_size:
