@@ -349,8 +349,8 @@ class Maddpg:
             checkpoint[key_a] = self.actor_policy[i].state_dict()
             checkpoint[key_oa] = self.actor_optimizer[i].state_dict()
 
-        checkpoint[critic] = self.critic_policy[i].state_dict()
-        checkpoint[optimizer_critic] = self.critic_optimizer.state_dict()
+        checkpoint["critic"] = self.critic_policy.state_dict()
+        checkpoint["optimizer_critic"] = self.critic_optimizer.state_dict()
 
         # TODO: figure out how to store the buffer also (error on attribute lookup)
         #checkpoint["replay_buffer"] = self.memory
