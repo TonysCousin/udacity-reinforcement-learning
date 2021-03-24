@@ -28,7 +28,7 @@ from ou_noise      import OUNoise
 from replay_buffer import ReplayBuffer
 
 # initial probability of keeping "bad" episodes (until enough exist to start learning)
-BAD_STEP_KEEP_PROB_INIT = 1.0
+BAD_STEP_KEEP_PROB_INIT = 0.04
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -38,8 +38,9 @@ class Maddpg:
 
     def __init__(self, state_size, action_size, num_agents, bad_step_prob=0.5, random_seed=0,
                  batch_size=32, buffer_size=1000000, noise_decay=1.0, noise_scale=1.0,
-                 learn_every=20, learn_iter=1, lr_actor=0.00001, lr_critic=0.000001,
-                 weight_decay=1.0e-5, gamma=0.99, tau=0.001, model_display_step=0):
+                 buffer_prime_size=1000, learn_every=20, learn_iter=1, lr_actor=0.00001,
+                 lr_critic=0.000001, weight_decay=1.0e-5, gamma=0.99, tau=0.001,
+                 model_display_step=0):
         """Initialize the one and only MADDPG manager
 
         Params
@@ -54,6 +55,9 @@ class Maddpg:
             noise_decay (float):  multiplier on the magnitude of noise; decay is applied each
                                     time step (must be <= 1.0)
             noise_scale (float):  scale factor applied to all noise, regardless of decay state
+            buffer_prime_size (int): number of experiences to be stored in the replay buffer
+                                    before learning begins, under the influence of the
+                                    BAD_STEP_KEEP_PROB_INIT probability
             learn_every (int):    number of time steps between learning sessions
             learn_iter (int):     number of learning iterations that get run during each
                                     learning session
@@ -75,6 +79,7 @@ class Maddpg:
         self.noise_decay = min(noise_decay, 1.0)
         self.noise_scale = noise_scale
         self.learn_every = learn_every
+        self.buffer_prime_size = buffer_prime_size
         self.learn_iter = learn_iter
         self.lr_actor = lr_actor
         self.lr_critic = lr_critic
@@ -86,6 +91,7 @@ class Maddpg:
         # initialize other internal things
         self.noise_mult = 1.0 # the multiplier that will get decayed
         self.learn_control = 0 #counts iterations between learning sessions
+        self.learning_reported = False #did we report that learning has begun?
         layer1_units = 400
         layer2_units = 256
 
@@ -130,9 +136,10 @@ class Maddpg:
 
 
     def act(self, states, add_noise=True):
-        """Computes the action of each agent using its current policy.  However, it will
-           initially generate random actions to prime the replay buffer until a
-           batch-full of experiences is stored. At that point learning can begin.
+        """Computes the action of each agent. Initially, these actions are random,
+           to prime the replay buffer until at least one batch-full of experiences is
+           stored. At that point learning can begin. From then on, it uses each agent's
+           current policy to generate its actions.
 
            Params:
                states (tuple of float tensors):  the state values for all agents
@@ -200,9 +207,12 @@ class Maddpg:
 
         # set up probability of keeping bad experiences based upon whether the buffer is
         # full enough to start learning
-        if len(self.memory) > self.batch_size:
+        if len(self.memory) > max(self.batch_size, self.buffer_prime_size):
             threshold = self.bad_step_keep_prob
             self.learning_underway = True
+            if not self.learning_reported:
+                print("\n* Replay buffer fully primed. Learning will commence.")
+                self.learning_reported = True
         else:
             threshold = BAD_STEP_KEEP_PROB_INIT
 
@@ -214,7 +224,7 @@ class Maddpg:
 
             # initiate learning on each agent, but only occasionally
             self.learn_control += 1
-            if len(self.memory) > self.batch_size  and  self.learn_control > self.learn_every:
+            if self.learning_underway  and  self.learn_control > self.learn_every:
                 self.learn_control = 0
                 for j in range(self.learn_iter):
                     experiences = self.memory.sample()
