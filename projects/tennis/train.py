@@ -41,16 +41,35 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     env_info = env.reset(train_mode=True)[brain_name]
     state_size = len(env_info.vector_observations[0]) #num states for one agent
     action_size = brain.vector_action_space_size #num actions for one agent
-    #print("train: state_size = {}, action_size = {}".format(state_size, action_size)) #debug
+    num_agents = len(env_info.agents)
+    states = env_info.vector_observations #returns ndarray(2, state_size)
 
+    actions = np.ndarray((num_agents, action_size))
+    next_states = np.ndarray((num_agents, state_size))
+    rewards = []
+    dones = []
     scores = []
     sum_steps = 0 #accumulates number of time steps exercised
     max_steps_experienced = 0
     recent_scores = deque(maxlen=AVG_SCORE_EXTENT)
     start_time = 0
-    first_episode_timed = -1
+
+    # run the simulation several time steps to prime the replay buffer
+    print("Priming the replay buffer", end="")
+    pc = 0
+    while not maddpg.is_learning_underway():
+        states, actions, rewards, next_states, dones = \
+          advance_time_step(maddpg, env, brain_name, states, actions, rewards, next_states, dones)
+        if pc % 1000 == 0:
+            print(".", end="")
+        pc += 1
+        if any(dones):
+            env_info = env.reset(train_mode=True)[brain_name]
+            states = env_info.vector_observations #returns ndarray(2, state_size)
+
 
     # loop on episodes
+    start_time = time.perf_counter()
     for e in range(starting_episode, max_episodes):
         
         # Reset the enviroment & agents and get the initial state of environment & agents
@@ -59,30 +78,14 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         score = 0 #total score for this episode
         maddpg.reset()
 
-        # start the timer after several episodes have passed, since early ones just fill the
-        # replay buffer and go quickly; once learning starts, the pace slows down, and this
-        # timer is used to predict total run duration
-        if first_episode_timed < 0  and  maddpg.is_learning_underway():
-            first_episode_timed = e
-            start_time = time.perf_counter()
-
         # loop over time steps
         for i in range(max_time_steps):
 
-            # Predict the best actions for the current state and store them in a single ndarray
-            actions = maddpg.act(states) #returns ndarray, one row for each agent
+            # advance the MADDPG model and its environment by one time step
+            states, actions, rewards, next_states, dones = \
+              advance_time_step(maddpg, env, brain_name, states, actions, rewards, next_states, dones)
 
-            # get the new state & reward based on this action
-            env_info = env.step(actions)[brain_name]
-            next_states = env_info.vector_observations #returns ndarray, one row for each agent
-            rewards = env_info.rewards #returns list of floats, one for each agent
-            dones = env_info.local_done #returns list of bools, one for each agent
-
-            # update the agents with this new info
-            maddpg.step(states, actions, rewards, next_states, dones) 
-
-            # roll over new state and check for episode completion
-            states = next_states
+            # check for episode completion
             score += np.max(rewards) #use the highest reward from all agents
             if np.any(dones):
                 sum_steps += i
@@ -93,7 +96,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         # determine epoch duration and estimate remaining time
         current_time = time.perf_counter()
         if start_time > 0:
-            timed_episodes = e - first_episode_timed - starting_episode + 1
+            timed_episodes = e - starting_episode + 1
             avg_duration = (current_time - start_time) / timed_episodes / 60.0 #minutes
             remaining_time_minutes = (starting_episode + max_episodes - e - 1) * avg_duration
             rem_time = remaining_time_minutes / 60.0
@@ -136,3 +139,38 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
                   max_steps_experienced))
     return scores
 
+
+def advance_time_step(model, env, brain_name, states, actions, rewards, next_states, dones):
+    """Advances the agents' model and the environment to the next time step, passing data
+       between the two as needed.
+
+       Params
+           model (Maddpg):         the MADDPG model that manages all agents
+           env (UnityEnvironment): the environment object in which all action occurs
+           brain_name (string):    an index into the Unity data structure for this environment
+           states (ndarray):       array of current states of all agents and environment [n, x]
+           actions (ndarray):      array of actions by all agents [n, x]
+           rewards (list):         list of rewards from all agents [n]
+           next_states (ndarray):  array of next states (after action applied) [n, x]
+           dones (list):           list of done flags (int, 1=done, 0=in work) [n]
+       where, in each param, n is the number of agents and x is the number of items per agent.
+
+       Returns: tuple of (s, a, r, s', done) values
+    """
+
+    # Predict the best actions for the current state and store them in a single ndarray
+    actions = model.act(states) #returns ndarray, one row for each agent
+
+    # get the new state & reward based on this action
+    env_info = env.step(actions)[brain_name]
+    next_states = env_info.vector_observations #returns ndarray, one row for each agent
+    rewards = env_info.rewards #returns list of floats, one for each agent
+    dones = env_info.local_done #returns list of bools, one for each agent
+
+    # update the agents with this new info
+    model.step(states, actions, rewards, next_states, dones) 
+
+    # roll over new state
+    states = next_states
+
+    return (states, actions, rewards, next_states, dones)

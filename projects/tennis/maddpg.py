@@ -96,7 +96,8 @@ class Maddpg:
         layer2_units = 256
 
         # define simple replay memory common to all agents
-        self.memory = ReplayBuffer(action_size, buffer_size, batch_size, random_seed)
+        self.memory = ReplayBuffer(action_size, buffer_size, batch_size, buffer_prime_size,
+                                   random_seed)
         self.learning_underway = False
 
         # create the actor networks
@@ -211,7 +212,6 @@ class Maddpg:
             threshold = self.bad_step_keep_prob
             self.learning_underway = True
             if not self.learning_reported:
-                print("\n* Replay buffer fully primed. Learning will commence.")
                 self.learning_reported = True
         else:
             threshold = BAD_STEP_KEEP_PROB_INIT
