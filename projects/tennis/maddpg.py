@@ -1,3 +1,10 @@
+# -------- HEY JOHN:
+
+
+
+# UPDATE THE DESCRIPTION HERE...
+
+
 # Implements the MADDPG algorithm for multiple agents, where each agent has its own
 # actor, but all agents effectively share a critic.  The critic in each agent
 # is updated with all actions and observations from all agents, so
@@ -11,13 +18,19 @@
 
 import numpy as np
 import torch
+import torch.nn.functional as F
+import torch.optim as optim
 from numpy.random import default_rng
+import copy
 
+from model         import Actor, Critic
+from ou_noise      import OUNoise
 from replay_buffer import ReplayBuffer
-from maddpg_agent  import MultiDdpgAgent
 
 # initial probability of keeping "bad" episodes (until enough exist to start learning)
-BAD_STEP_KEEP_PROB_INIT = 1.0
+BAD_STEP_KEEP_PROB_INIT = 0.04
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class Maddpg:
@@ -25,8 +38,9 @@ class Maddpg:
 
     def __init__(self, state_size, action_size, num_agents, bad_step_prob=0.5, random_seed=0,
                  batch_size=32, buffer_size=1000000, noise_decay=1.0, noise_scale=1.0,
-                 learn_every=20, learn_iter=1, lr_actor=0.00001, lr_critic=0.000001,
-                 weight_decay=1.0e-5, gamma=0.99, tau=0.001, model_display_step=0):
+                 buffer_prime_size=1000, learn_every=20, learn_iter=1, lr_actor=0.00001,
+                 lr_critic=0.000001, weight_decay=1.0e-5, gamma=0.99, tau=0.001,
+                 model_display_step=0):
         """Initialize the one and only MADDPG manager
 
         Params
@@ -41,6 +55,9 @@ class Maddpg:
             noise_decay (float):  multiplier on the magnitude of noise; decay is applied each
                                     time step (must be <= 1.0)
             noise_scale (float):  scale factor applied to all noise, regardless of decay state
+            buffer_prime_size (int): number of experiences to be stored in the replay buffer
+                                    before learning begins, under the influence of the
+                                    BAD_STEP_KEEP_PROB_INIT probability
             learn_every (int):    number of time steps between learning sessions
             learn_iter (int):     number of learning iterations that get run during each
                                     learning session
@@ -59,34 +76,71 @@ class Maddpg:
         self.bad_step_keep_prob = min(bad_step_prob, 1.0)
         self.rng = default_rng(random_seed)
         self.batch_size = batch_size
+        self.noise_decay = min(noise_decay, 1.0)
+        self.noise_scale = noise_scale
+        self.learn_every = learn_every
+        self.buffer_prime_size = buffer_prime_size
+        self.learn_iter = learn_iter
+        self.lr_actor = lr_actor
+        self.lr_critic = lr_critic
+        self.weight_decay = weight_decay
+        self.gamma = gamma
+        self.tau = tau
+        self.model_display_step = model_display_step
+
+        # initialize other internal things
+        self.noise_mult = 1.0 # the multiplier that will get decayed
+        self.learn_control = 0 #counts iterations between learning sessions
+        self.learning_reported = False #did we report that learning has begun?
+        layer1_units = 400
+        layer2_units = 256
 
         # define simple replay memory common to all agents
-        self.memory = ReplayBuffer(action_size, buffer_size, batch_size, random_seed)
+        self.memory = ReplayBuffer(action_size, buffer_size, batch_size, buffer_prime_size,
+                                   random_seed)
         self.learning_underway = False
 
-        # create a list of agent objects and set their hyperparams
-        self.agents = [None, None]
-        for a in range(num_agents):
-            self.agents[a] = MultiDdpgAgent(state_size, action_size, num_agents, random_seed,
-                                           self.memory, batch_size, noise_decay, learn_every,
-                                           learn_iter, lr_actor, lr_critic, weight_decay)
-            self.agents[a].set_hp_gamma(gamma)
-            self.agents[a].set_hp_tau(tau)
-            self.agents[a].set_hp_noise_scale(noise_scale)
-            self.agents[a].set_model_display_step(model_display_step)
+        # create the actor networks
+        self.actor_policy = []
+        self.actor_target = []
+        self.actor_optimizer = []
+        for i in range(num_agents):
+            self.actor_policy.append(Actor(state_size, action_size, random_seed,
+                                           fc1_units=layer1_units, fc2_units=layer2_units) \
+                                          .to(device))
+            self.actor_target.append(Actor(state_size, action_size, random_seed,
+                                           fc1_units=layer1_units, fc2_units=layer2_units) \
+                                          .to(device))
+            self.actor_optimizer.append(optim.Adam(self.actor_policy[i].parameters(),
+                                                   lr=lr_actor))
+
+        # create the common critic networks
+        self.critic_policy = Critic(num_agents*state_size, num_agents*action_size,
+                                    random_seed, fcs1_units=layer1_units,
+                                    fc2_units=layer2_units).to(device)
+        self.critic_target = Critic(num_agents*state_size, num_agents*action_size,
+                                    random_seed, fcs1_units=layer1_units,
+                                    fc2_units=layer2_units).to(device)
+        self.critic_optimizer = optim.Adam(self.critic_policy.parameters(), lr=lr_critic,
+                                           weight_decay=weight_decay)
+
+        # noise process & latches for decay reporting
+        self.noise = OUNoise(action_size, random_seed)
+        self.noise_level1_reported = False
+        self.noise_level2_reported = False
 
 
     def reset(self):
         """Resets all agents to an initial state to begin another episode"""
 
-        for a in self.agents:
-            a.reset()
+        self.noise.reset()
 
 
     def act(self, states, add_noise=True):
-        """Invokes each agent to compute desired agents using its current policy.
-           However, it will generate random actions to prime the replay buffer until a
-           batch-full of experiences is stored. At that point learning can begin.
+        """Computes the action of each agent. Initially, these actions are random,
+           to prime the replay buffer until at least one batch-full of experiences is
+           stored. At that point learning can begin. From then on, it uses each agent's
+           current policy to generate its actions.
 
            Params:
                states (tuple of float tensors):  the state values for all agents
@@ -100,13 +154,37 @@ class Maddpg:
         # if learning is underway (replay buffer is sufficiently populated), then compute
         # actions based on the agent policies
         if self.learning_underway:
-            for i, agent in enumerate(self.agents):
-                actions[i, :] = agent.act(states[i], add_noise)
+            for i in range(self.num_agents):
+
+                # get the raw action
+                state = torch.from_numpy(states[i]).float().to(device)
+                self.actor_policy[i].eval()
+                with torch.no_grad():
+                    action = self.actor_policy[i](state).cpu().data.numpy()
+                self.actor_policy[i].train()
+
+                # add noise if appropriate, and decay it
+                if add_noise:
+                    n = self.noise.sample() * self.noise_scale
+                    action += n * self.noise_mult
+                    self.noise_mult *= self.noise_decay
+                    if self.noise_mult < 0.2:
+                        if not self.noise_level1_reported:
+                            print("\n* noise mult = 0.2")
+                            self.noise_level1_reported = True
+                        if self.noise_mult < 0.0005:
+                            self.noise_mult = 0.0005
+                            if not self.noise_level2_reported:
+                                print("\n* noise mult = 0.0005")
+                                self.noise_level2_reported = True
+
+
+                actions[i, :] = np.clip(action, -1.0, 1.0)
 
         # else, prime the replay buffer with random actions that uniformly cover the full 
         # range of action space
         else:
-            for i, agent in enumerate(self.agents):
+            for i in range(self.num_agents):
                 actions[i, :] = torch.from_numpy(2.0 * self.rng.random((1, self.num_agents)) - 1.0)
 
         return actions
@@ -130,9 +208,11 @@ class Maddpg:
 
         # set up probability of keeping bad experiences based upon whether the buffer is
         # full enough to start learning
-        if len(self.memory) > self.batch_size:
+        if len(self.memory) > max(self.batch_size, self.buffer_prime_size):
             threshold = self.bad_step_keep_prob
-            self.learning_underway = True #lets the object owner know
+            self.learning_underway = True
+            if not self.learning_reported:
+                self.learning_reported = True
         else:
             threshold = BAD_STEP_KEEP_PROB_INIT
 
@@ -142,9 +222,107 @@ class Maddpg:
             # add the new experience to the replay buffer
             self.memory.add(obs, actions, rewards, next_obs, dones)
 
-            # advance each agent
-            for i, a in enumerate(self.agents):
-                a.step(i)
+            # initiate learning on each agent, but only occasionally
+            self.learn_control += 1
+            if self.learning_underway  and  self.learn_control > self.learn_every:
+                self.learn_control = 0
+                for j in range(self.learn_iter):
+                    experiences = self.memory.sample()
+                    self.learn(experiences)
+
+
+    def learn(self, experiences):
+        """Update policy and value parameters using given batch of experience tuples.
+           Q_targets = r + γ * critic_target(next_state, actor_target(next_state))
+           where:
+               actor_target(state) -> action
+               critic_target(state, action) -> Q-value
+
+           Params
+               experiences (Tuple of tensors): (s, a, r, s', done), where
+                 each tensor has shape [b, a, x]. b is batch size, a is num agents,
+                 and x is num states (for one agent) for s and s';
+                     x is num actions (for one agent) for a
+                     x is 1 for r and done
+        """
+
+        # extract the elements of the replayed batch of experiences
+        obs, actions, rewards, next_obs, dones = experiences
+
+        #---------- update critic network
+
+        # grab the batch of next state vectors for each actor and feed them into the
+        # target network to get predicted next actions (each row is actions of all actors)
+        target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float) \
+                           .to(device)
+        for i in range(self.num_agents):
+            s = next_obs[:, i, :].to(device)
+            target_actions[:, i*self.action_size:(i+1)*self.action_size] = \
+                          self.actor_target[i](s)
+
+        # create a next_states tensor [b, x] where each row represents the states
+        # of all agents
+        next_states = next_obs.view(self.batch_size, -1).to(device)
+
+        # compute the Q values for the next states/actions from the target model
+        q_targets_next = self.critic_target(next_states, target_actions).squeeze()
+
+        # Compute Q targets for current states (y_i) for this agent
+        reward = rewards.max(dim=1)[0].squeeze().to(device) #sum rewards from both agents
+        done = dones.max(dim=1)[0].squeeze().to(device)     #if either agent indicates done
+        q_targets = reward + self.gamma*q_targets_next*(1 - done)
+
+        # reshape the observations & actions so that all agents are represented on each row
+        all_agents_states = obs.view(self.batch_size, -1).to(device)
+        all_agents_actions = actions.view(self.batch_size, -1).to(device)
+
+        # Compute critic loss
+        q_expected = self.critic_policy(all_agents_states, all_agents_actions)
+        critic_loss = F.mse_loss(q_expected, q_targets)
+
+        # Minimize the loss
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic_policy.parameters(), 1)
+        self.critic_optimizer.step()
+
+        #---------- update actor networks
+
+        # Compute actor loss
+        actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
+        for i in range(self.num_agents):
+            s = obs[:, i, :].to(device)
+            actions_pred[:, i*self.action_size:(i+1)*self.action_size] = self.actor_policy[i](s)
+        actor_loss = -self.critic_policy(all_agents_states, actions_pred).mean()
+
+        # Minimize the loss
+        for i in range(self.num_agents):
+            self.actor_optimizer[i].zero_grad()
+            # backpropagate, but clear its buffers only on final loop iteration
+            actor_loss.backward(retain_graph=(i < self.num_agents-1))
+            torch.nn.utils.clip_grad_norm_(self.actor_policy[i].parameters(), 1)
+            self.actor_optimizer[i].step()
+
+        #---------- update target networks
+
+        for i in range(self.num_agents):
+            self.soft_update(self.actor_policy[i], self.actor_target[i])
+        self.soft_update(self.critic_policy, self.critic_target)
+
+
+    def soft_update(self, policy_model, target_model):
+        """Soft update model parameters - move the target model params a bit closer to those
+           of the given policy model.
+           θ_target = τ*θ_policy + (1 - τ)*θ_target; where tau < 1
+
+           Params
+               policy_model: PyTorch model (weights will be copied from)
+               target_model: PyTorch model (weights will be copied to)
+
+        """
+
+        for tgt, pol in zip(target_model.parameters(), policy_model.parameters()):
+            tgt.data.copy_(self.tau*pol.data + (1.0-self.tau)*tgt.data)
 
 
     def get_memory_stats(self):
@@ -162,33 +340,9 @@ class Maddpg:
         return self.learning_underway
 
 
-    def save_anal_data(self, tag):
-        """Writes a data file for each agent in csv format. Each file has four columns,
-           representing 2 action values followed by corresponding 2 noise values.  Each
-           row represents a time step.
-
-           Params:
-               tag (string): a tag that will be prefixed to the filenames for easier
-                               identification.
-        """
-
-        for i in range(self.num_agents):
-            d = self.agents[i].get_anal_data()
-            da = d[0] #actions
-            dn = d[1] #noise
-            len = min(da.shape[0], dn.shape[0])
-
-            filename = "checkpoint/{}.agent{}_actions.csv".format(tag, i)
-            f = open(filename, "w")
-            for j in range(len):
-                f.write("{:8.4f}, {:8.4f}, {:8.4f}, {:8.4f}\n"
-                        .format(da[j][0], da[j][1], dn[j][0], dn[j][1]))
-            f.close()
-
-
     def save_checkpoint(self, path, tag, episode):
-        """Saves checkpoint files for each of the networks.  This version stores the 'new'
-           (non-legacy) format.
+        """Saves checkpoint files for each of the networks and optimizers.  This version stores
+           the 'new' (non-legacy) format.
 
            Params:
                path (string): directory path where the files will go (if not None, needs to end in /)
@@ -199,15 +353,14 @@ class Maddpg:
         """
 
         checkpoint = {}
-        for i, a in enumerate(self.agents):
+        for i in range(self.num_agents):
             key_a = "actor{}".format(i)
-            key_c = "critic{}".format(i)
             key_oa = "optimizer_actor{}".format(i)
-            key_oc = "optimizer_critic{}".format(i)
-            checkpoint[key_a] = self.agents[i].actor_local.state_dict()
-            checkpoint[key_c] = self.agents[i].critic_local.state_dict()
-            checkpoint[key_oa] = self.agents[i].actor_optimizer.state_dict()
-            checkpoint[key_oc] = self.agents[i].critic_optimizer.state_dict()
+            checkpoint[key_a] = self.actor_policy[i].state_dict()
+            checkpoint[key_oa] = self.actor_optimizer[i].state_dict()
+
+        checkpoint["critic"] = self.critic_policy.state_dict()
+        checkpoint["optimizer_critic"] = self.critic_optimizer.state_dict()
 
         # TODO: figure out how to store the buffer also (error on attribute lookup)
         #checkpoint["replay_buffer"] = self.memory
@@ -238,34 +391,29 @@ class Maddpg:
                structured as a dictionary containing the following fields:
                  actor0
                  actor1
-                 critic0
-                 critic1
                  optimizer_actor0
                  optimizer_actor1
-                 optimizer_critic0
-                 optimizer_critic1
-                 replay_buffer
-               Each field except the replay_buffer holds a state_dict.
+                 critic
+                 optimizer_critic
+               Each field holds a state_dict.
         """
 
         #---------- load legacy checkpoints
 
         if legacy:
-            for i, a in enumerate(self.agents):
-                filename_a = "{}{}_actor{}_{}.pt" \
-                             .format(path_root, tag, i, episode)
-                filename_c = "{}{}_critic{}_{}.pt" \
-                             .format(path_root, tag, i, episode)
+            print("\n\n///// WARNING: legacy checkpoint load was requested; the current\n",
+                  "solution is incompatible with these checkpoint files.\n")
 
-                self.agents[i].actor_local.load_state_dict(torch.load(filename_a))
-                self.agents[i].critic_local.load_state_dict(torch.load(filename_c))
 
         #----------- load new style checkpoints
 
         else:
+            print("\n///// WARNING: new style checkpoint loading needs to be upgraded.")
+
             filename = "{}{}_{}.pt".format(path_root, tag, episode)
             checkpoint = torch.load(filename)
 
+"""
             for i, a in enumerate(self.agents):
                 key_a = "actor{}".format(i)
                 key_c = "critic{}".format(i)
@@ -275,7 +423,8 @@ class Maddpg:
                 self.agents[i].critic_local.load_state_dict(checkpoint[key_c])
                 self.agents[i].actor_optimizer.load_state_dict(checkpoint[key_oa])
                 self.agents[i].critic_optimizer.load_state_dict(checkpoint[key_oc])
+"""
 
             #self.memory = checkpoint['replay_buffer']
 
-        print("Checkpoint loaded for {}, episode {}".format(tag, episode))
+        #print("Checkpoint loaded for {}, episode {}".format(tag, episode))

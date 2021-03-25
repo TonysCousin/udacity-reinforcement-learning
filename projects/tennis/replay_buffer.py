@@ -17,12 +17,13 @@ REWARD_THRESHOLD = 0.0 # value above which is considered a "good" experience
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, action_size, buffer_size, batch_size, seed):
+    def __init__(self, action_size, buffer_size, batch_size, prime_size, seed):
         """Initialize a ReplayBuffer object.
         Params
-        ======
             buffer_size (int): maximum number of experiences that can be stored
             batch_size (int):  size of each training batch extracted during a sample
+            prime_size (int):  initial number of experiences that are considered as random
+                                 priming data (don't need to be kept once buffer is full)
             seed (float):      seed used for the random number generator
         """
 
@@ -30,6 +31,7 @@ class ReplayBuffer:
         self.buffer_size = buffer_size
         self.memory = deque(maxlen=buffer_size)  # internal memory (deque)
         self.batch_size = batch_size
+        self.prime_size = prime_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
         random.seed(seed)
         self.rewards_exceed_threshold = 0
@@ -66,8 +68,8 @@ class ReplayBuffer:
                 # reduce the prime count
                 self.num_primes -= 1
 
-        # if number of entries < batch size, then count the entry as a prime
-        if len(self.memory) < self.batch_size:
+        # if number of entries < prime size, then count the entry as a prime
+        if len(self.memory) < self.prime_size:
             self.num_primes += 1
 
         else:
@@ -99,16 +101,18 @@ class ReplayBuffer:
         """
 
         # randomly sample enough experiences from the buffer for one batch
-        experiences = random.sample(self.memory, k=self.batch_size) #returns list of experiences
+        experiences = []
+        if len(self.memory) >= self.batch_size:
+            experiences = random.sample(self.memory, k=self.batch_size) #returns list of experiences
 
-        # create empty tensors to hold all of the experience data
-        e0 = experiences[0]
-        num_agents = e0.state.shape[0] #assume this applies to all elements
-        states = torch.zeros(self.batch_size, num_agents, e0.state.shape[1], dtype=torch.float)
-        actions = torch.zeros(self.batch_size, num_agents, e0.action.shape[1], dtype=torch.float)
-        rewards = torch.zeros(self.batch_size, num_agents, 1, dtype=torch.float)
-        next_states = torch.zeros(self.batch_size, num_agents, e0.next_state.shape[1], dtype=torch.float)
-        dones = torch.zeros(self.batch_size, num_agents, 1, dtype=torch.float)
+            # create empty tensors to hold all of the experience data
+            e0 = experiences[0]
+            num_agents = e0.state.shape[0] #assume this applies to all elements
+            states = torch.zeros(self.batch_size, num_agents, e0.state.shape[1], dtype=torch.float)
+            actions = torch.zeros(self.batch_size, num_agents, e0.action.shape[1], dtype=torch.float)
+            rewards = torch.zeros(self.batch_size, num_agents, 1, dtype=torch.float)
+            next_states = torch.zeros(self.batch_size, num_agents, e0.next_state.shape[1], dtype=torch.float)
+            dones = torch.zeros(self.batch_size, num_agents, 1, dtype=torch.float)
 
         if len(experiences) == self.batch_size:
 
