@@ -20,6 +20,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.optim.lr_scheduler import StepLR
 from numpy.random import default_rng
 import copy
 
@@ -39,8 +40,8 @@ class Maddpg:
     def __init__(self, state_size, action_size, num_agents, bad_step_prob=0.5, random_seed=0,
                  batch_size=32, buffer_size=1000000, noise_decay=1.0, noise_scale=1.0,
                  buffer_prime_size=1000, learn_every=20, learn_iter=1, lr_actor=0.00001,
-                 lr_critic=0.000001, weight_decay=1.0e-5, gamma=0.99, tau=0.001,
-                 model_display_step=0):
+                 lr_critic=0.000001, lr_anneal_freq=2000, lr_anneal_mult=0.5, weight_decay=1.0e-5,
+                 gamma=0.99, tau=0.001, model_display_step=0):
         """Initialize the one and only MADDPG manager
 
         Params
@@ -63,6 +64,8 @@ class Maddpg:
                                     learning session
             lr_actor (float):     learning rate for each agent's actor network
             lr_critic (float):    learning rate for each agent's critic network
+            lr_anneal_freq (int): number of episodes (NOT time steps!) between annealing steps
+            lr_anneal_mult (float): multiplier used to anneal both LRs at each annealing step
             weight_decay (float): decay rate applied to each agent's critic network optimizer
             gamma (float):        future reward discount factor
             tau (float):          target network soft update rate
@@ -83,6 +86,8 @@ class Maddpg:
         self.learn_iter = learn_iter
         self.lr_actor = lr_actor
         self.lr_critic = lr_critic
+        self.lr_anneal_freq = lr_anneal_freq
+        self.lr_anneal_mult = lr_anneal_mult
         self.weight_decay = weight_decay
         self.gamma = gamma
         self.tau = tau
@@ -90,8 +95,8 @@ class Maddpg:
 
         # initialize other internal things
         self.noise_mult = 1.0 # the multiplier that will get decayed
+        self.prev_clr = self.lr_critic
         self.learn_control = 0 #counts iterations between learning sessions
-        self.learning_reported = False #did we report that learning has begun?
         layer1_units = 400
         layer2_units = 256
 
@@ -104,6 +109,7 @@ class Maddpg:
         self.actor_policy = []
         self.actor_target = []
         self.actor_optimizer = []
+        self.actor_scheduler = []
         for i in range(num_agents):
             self.actor_policy.append(Actor(state_size, action_size, random_seed,
                                            fc1_units=layer1_units, fc2_units=layer2_units) \
@@ -113,6 +119,9 @@ class Maddpg:
                                           .to(device))
             self.actor_optimizer.append(optim.Adam(self.actor_policy[i].parameters(),
                                                    lr=lr_actor))
+            self.actor_scheduler.append(StepLR(self.actor_optimizer[i],
+                                               step_size=self.lr_anneal_freq,
+                                               gamma=self.lr_anneal_mult))
 
         # create the common critic networks
         self.critic_policy = Critic(num_agents*state_size, num_agents*action_size,
@@ -123,6 +132,8 @@ class Maddpg:
                                     fc2_units=layer2_units).to(device)
         self.critic_optimizer = optim.Adam(self.critic_policy.parameters(), lr=lr_critic,
                                            weight_decay=weight_decay)
+        self.critic_scheduler = StepLR(self.critic_optimizer, step_size=self.lr_anneal_freq,
+                                       gamma=self.lr_anneal_mult)
 
         # noise process & latches for decay reporting
         self.noise = OUNoise(action_size, random_seed)
@@ -211,24 +222,35 @@ class Maddpg:
         if len(self.memory) > max(self.batch_size, self.buffer_prime_size):
             threshold = self.bad_step_keep_prob
             self.learning_underway = True
-            if not self.learning_reported:
-                self.learning_reported = True
         else:
             threshold = BAD_STEP_KEEP_PROB_INIT
 
-        # if this step did not score any points, then use random draw to decide if it's a keeper
+        # if this step got some reward then keep it;
+        # if it did not score any points, then use random draw to decide if it's a keeper
         if max(rewards) > 0.0  or  self.rng.random() < threshold:
-
-            # add the new experience to the replay buffer
             self.memory.add(obs, actions, rewards, next_obs, dones)
 
-            # initiate learning on each agent, but only occasionally
-            self.learn_control += 1
-            if self.learning_underway  and  self.learn_control > self.learn_every:
+        # initiate learning on each agent, but only every N time steps
+        self.learn_control += 1
+        if self.learning_underway:
+
+            # perform the learning if it is time
+            if self.learn_control > self.learn_every:
                 self.learn_control = 0
                 for j in range(self.learn_iter):
-                    experiences = self.memory.sample()
-                    self.learn(experiences)
+                   experiences = self.memory.sample()
+                   self.learn(experiences)
+
+            # update learning rate annealing; this is counting episodes, not time steps
+            if any(dones):
+                for i in range(self.num_agents):
+                    self.actor_scheduler[i].step()
+                self.critic_scheduler.step()
+                clr = self.critic_scheduler.get_lr()[0]
+                if clr < self.prev_clr:
+                    print("\n* LR annealed: new actor = {:.7f}, critic = {:.7f}" \
+                          .format(self.actor_scheduler[0].get_lr()[0], clr))
+                    self.prev_clr = clr
 
 
     def learn(self, experiences):
