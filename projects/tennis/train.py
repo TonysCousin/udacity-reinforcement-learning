@@ -32,7 +32,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
                                         AVG_SCORE_EXTENT consecutive episodes)
            checkpoint_interval (int): number of episodes between checkpoint files being stored
 
-       Return: list of episode scores (list of float)
+       Return: tuple of (list of episode scores (floats), list of running avg scores (floats))
     """
 
     # Initialize Unity simulation environment
@@ -48,7 +48,8 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     next_states = np.ndarray((num_agents, state_size))
     rewards = []
     dones = []
-    scores = []
+    scores = [] # collects final score from every episode
+    avg_scores = [] # collects running avg score (over prev 100 eps) at each episode
     sum_steps = 0 #accumulates number of time steps exercised
     max_steps_experienced = 0
     recent_scores = deque(maxlen=AVG_SCORE_EXTENT)
@@ -60,7 +61,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     while not maddpg.is_learning_underway():
         states, actions, rewards, next_states, dones = \
           advance_time_step(maddpg, env, brain_name, states, actions, rewards, next_states, dones)
-        if pc % 1000 == 0:
+        if pc % 2000 == 0:
             print(".", end="")
         pc += 1
         if any(dones):
@@ -69,11 +70,11 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     print("\n")
 
 
-    # loop on episodes
+    # loop on episodes for training
     start_time = time.perf_counter()
     for e in range(starting_episode, max_episodes):
         
-        # Reset the enviroment & agents and get the initial state of environment & agents
+        # Reset the enviroment & agents and get their initial states
         env_info = env.reset(train_mode=True)[brain_name]
         states = env_info.vector_observations #returns ndarray(2, state_size)
         score = 0 #total score for this episode
@@ -111,6 +112,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         recent_scores.append(score)
         avg_score = np.mean(recent_scores)
         max_recent = np.max(recent_scores)
+        avg_scores.append(avg_score)
         mem_stats = maddpg.get_memory_stats() #element 0 is total size, 1 is num good experiences
         mem_pct = 0.0
         if mem_stats[0] > 0:
@@ -138,7 +140,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     print("\nAvg/max time steps/episode = {:.1f}/{:d}"
           .format(float(sum_steps)/float(max_episodes-starting_episode),
                   max_steps_experienced))
-    return scores
+    return (scores, avg_scores)
 
 
 def advance_time_step(model, env, brain_name, states, actions, rewards, next_states, dones):

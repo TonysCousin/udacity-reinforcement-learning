@@ -248,8 +248,11 @@ class Maddpg:
                 self.critic_scheduler.step()
                 clr = self.critic_scheduler.get_lr()[0]
                 if clr < self.prev_clr:
-                    print("\n* LR annealed: new actor = {:.7f}, critic = {:.7f}" \
-                          .format(self.actor_scheduler[0].get_lr()[0], clr))
+                    if clr < 1.0e-7:
+                        print("\n*** CAUTION: low learning rates: {:.7f}, {:.7f}" \
+                              .format(self.actor_scheduler[0].get_lr()[0], clr))
+                    #print("\n* LR annealed: new actor = {:.7f}, critic = {:.7f}" \
+                    #      .format(self.actor_scheduler[0].get_lr()[0], clr))
                     self.prev_clr = clr
 
 
@@ -374,6 +377,8 @@ class Maddpg:
            For info on file structure, see the description of restore_checkpoint(), below.
         """
 
+        # TODO: next mod of checkpoint structure, add a pedigree indicator to it
+
         checkpoint = {}
         for i in range(self.num_agents):
             key_a = "actor{}".format(i)
@@ -391,18 +396,21 @@ class Maddpg:
         torch.save(checkpoint, filename)
 
 
-    def restore_checkpoint(self, path_root, tag, episode, legacy=False):
+    def restore_checkpoint(self, path_root, tag, episode, pedigree=0):
         """Loads data from a checkpoint for continued training.
            MUST be called AFTER defining the MultiDdptAgent objects, optimizers and
            replay buffer.
 
            Params:
-               path_root (string): directory path of the root dir above which the checkpoint
-                                     is saved. Assumes all checkpoints are in a subdir named
-                                     the same as the tag. Assumed to end in '/'
+               path_root (string): directory path of the root dir in which the checkpoint
+                                     is saved. Assumed to end in '/'
                tag (string):       tag that distinguishes this set of networks/runs
                episode (int):      the episode number when the checkpoint was stored
-               legacy (bool):      should we use the legacy file structure?
+               pedigree (int):     which style generation was the checkpoint created under?
+                                     0 = current (same as last value on this list)
+                                     1 = original (configs 1-26, with multiple files)
+                                     2 = configs 27-30, with a single file
+                                     3 = configs 31-present, with single critic network
 
                Assumes checkpoint filenames are all <tag>.<run>_[networkname_]<episode>.pt
                where networkname is used only for legacy formats, as those have separate
@@ -420,33 +428,31 @@ class Maddpg:
                Each field holds a state_dict.
         """
 
-        #---------- load legacy checkpoints
+        #---------- load gen 1/2 checkpoints (generated prior to config 27)
 
-        if legacy:
+        if pedigree == 1  or  pedigree == 2:
             print("\n\n///// WARNING: legacy checkpoint load was requested; the current\n",
-                  "solution is incompatible with these checkpoint files.\n")
+                  "architecture is incompatible with these checkpoint files.\n")
 
 
-        #----------- load new style checkpoints
+        #----------- load gen 3 checkpoints (starting with config 31)
 
-        else:
-            print("\n///// WARNING: new style checkpoint loading needs to be upgraded.")
+        elif pedigree == 3  or  pedigree == 0:
 
             filename = "{}{}_{}.pt".format(path_root, tag, episode)
             checkpoint = torch.load(filename)
 
-"""
-            for i, a in enumerate(self.agents):
+            for i in range(self.num_agents):
                 key_a = "actor{}".format(i)
-                key_c = "critic{}".format(i)
                 key_oa = "optimizer_actor{}".format(i)
-                key_oc = "optimizer_critic{}".format(i)
-                self.agents[i].actor_local.load_state_dict(checkpoint[key_a])
-                self.agents[i].critic_local.load_state_dict(checkpoint[key_c])
-                self.agents[i].actor_optimizer.load_state_dict(checkpoint[key_oa])
-                self.agents[i].critic_optimizer.load_state_dict(checkpoint[key_oc])
-"""
+                self.actor_policy[i].load_state_dict(checkpoint[key_a])
+                self.actor_optimizer[i].load_state_dict(checkpoint[key_oa])
 
-            #self.memory = checkpoint['replay_buffer']
+            self.critic_policy.load_state_dict(checkpoint["critic"])
+            self.critic_optimizer.load_state_dict(checkpoint["optimizer_critic"])
+            #self.memory = checkpoint["replay_buffer"]
+            print("Checkpoint loaded for {}, episode {}".format(tag, episode))
 
-        #print("Checkpoint loaded for {}, episode {}".format(tag, episode))
+        else:
+            print("\n\n///// WARNING: restore of unknown checkpoint pedigree {} was requested.")
+
