@@ -61,7 +61,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     while not maddpg.is_learning_underway():
         states, actions, rewards, next_states, dones = \
           advance_time_step(maddpg, env, brain_name, states, actions, rewards, next_states, dones)
-        if pc % 2000 == 0:
+        if pc % 4000 == 0:
             print(".", end="")
         pc += 1
         if any(dones):
