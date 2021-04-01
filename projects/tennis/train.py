@@ -67,7 +67,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         if any(dones):
             env_info = env.reset(train_mode=True)[brain_name]
             states = env_info.vector_observations #returns ndarray(2, state_size)
-    print("\n")
+    print("!\n")
 
 
     # loop on episodes for training

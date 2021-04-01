@@ -119,14 +119,15 @@ class Maddpg:
 
             self.critic_policy.append(Critic(num_agents*state_size, num_agents*action_size,
                                              random_seed, fcs1_units=layer1_units,
-                                             fc2_units=layer2_units).to(device)
+                                             fc2_units=layer2_units).to(device))
             self.critic_target.append(Critic(num_agents*state_size, num_agents*action_size,
                                              random_seed, fcs1_units=layer1_units,
-                                             fc2_units=layer2_units).to(device)
-            self.critic_optimizer.append(optim.Adam(self.critic_policy.parameters(), lr=lr_critic,
-                                                    weight_decay=weight_decay)
-            self.critic_scheduler.append(StepLR(self.critic_optimizer, step_size=self.lr_anneal_freq,
-                                                gamma=self.lr_anneal_mult)
+                                             fc2_units=layer2_units).to(device))
+            self.critic_optimizer.append(optim.Adam(self.critic_policy[i].parameters(), lr=lr_critic,
+                                                    weight_decay=weight_decay))
+            self.critic_scheduler.append(StepLR(self.critic_optimizer[i],
+                                                step_size=self.lr_anneal_freq,
+                                                gamma=self.lr_anneal_mult))
 
         # noise process & latches for decay reporting
         self.noise = OUNoise(action_size, random_seed)
@@ -238,15 +239,15 @@ class Maddpg:
             if any(dones):
                 for i in range(self.num_agents):
                     self.actor_scheduler[i].step()
-                self.critic_scheduler.step()
-                clr = self.critic_scheduler.get_lr()[0]
-                if clr < self.prev_clr:
-                    if clr < 1.0e-7:
-                        print("\n*** CAUTION: low learning rates: {:.7f}, {:.7f}" \
-                              .format(self.actor_scheduler[0].get_lr()[0], clr))
-                    #print("\n* LR annealed: new actor = {:.7f}, critic = {:.7f}" \
-                    #      .format(self.actor_scheduler[0].get_lr()[0], clr))
-                    self.prev_clr = clr
+                    self.critic_scheduler[i].step()
+                    clr = self.critic_scheduler[i].get_lr()[0]
+                    if clr < self.prev_clr: # assumes both critics have same LR schedule
+                        if clr < 1.0e-7:
+                            print("\n*** CAUTION: low learning rates: {:.7f}, {:.7f}" \
+                                  .format(self.actor_scheduler[0].get_lr()[0], clr))
+                        #print("\n* LR annealed: new actor = {:.7f}, critic = {:.7f}" \
+                        #      .format(self.actor_scheduler[0].get_lr()[0], clr))
+                        self.prev_clr = clr
 
 
     def learn(self, experiences):
@@ -281,23 +282,23 @@ class Maddpg:
         all_agents_states = obs.view(self.batch_size, -1).to(device)
         all_agents_actions = actions.view(self.batch_size, -1).to(device)
 
-        # for each agent use its actor networks to compute action data
-        target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float) \
-                           .to(device)
-        actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
-        for i in range(self.num_agents):
-
-            # grab next state vectors and use this agent's target network to predict next actions
-            ns = next_obs[:, i, :].to(device)
-            target_actions[:, i*self.action_size:(i+1)*self.action_size] = \
-                           self.actor_target[i](ns)
-
-            # now get current state vector and use this agent's current policy to get current action
-            s = obs[:, i, :].to(device)
-            actions_pred[:, i*self.action_size:(i+1)*self.action_size] = self.actor_policy[i](s)
-
         # update each agent individually
         for agent in range(self.num_agents):
+
+            # for each agent use its actor networks to compute action data
+            target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float) \
+                               .to(device)
+            actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
+
+            # grab next state vectors and use this agent's target network to predict next actions
+            ns = next_obs[:, agent, :].to(device)
+            target_actions[:, agent*self.action_size:(agent+1)*self.action_size] = \
+                           self.actor_target[agent](ns)
+
+            # now get current state vector and use this agent's current policy to get current action
+            s = obs[:, agent, :].to(device)
+            actions_pred[:, agent*self.action_size:(agent+1)*self.action_size] = \
+                           self.actor_policy[agent](s)
 
             #---------- update critic networks
 
@@ -323,7 +324,7 @@ class Maddpg:
             actor_loss = -self.critic_policy[agent](all_agents_states, actions_pred).mean()
 
             # Minimize the loss
-            self.actor_optimizer[actor].zero_grad()
+            self.actor_optimizer[agent].zero_grad()
             actor_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.actor_policy[agent].parameters(), 1)
             self.actor_optimizer[agent].step()
