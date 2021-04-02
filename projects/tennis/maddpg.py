@@ -13,9 +13,10 @@ from torch.optim.lr_scheduler import StepLR
 from numpy.random import default_rng
 import copy
 
-from model         import Actor, Critic
-from ou_noise      import OUNoise
-from replay_buffer import ReplayBuffer
+from model          import Actor, Critic
+#from ou_noise      import OUNoise
+from gaussian_noise import GaussNoise
+from replay_buffer  import ReplayBuffer
 
 # initial probability of keeping "bad" episodes (until enough exist to start learning)
 # (no longer used as long as replay buffer priming is occurring)
@@ -130,7 +131,7 @@ class Maddpg:
                                                 gamma=self.lr_anneal_mult))
 
         # noise process & latches for decay reporting
-        self.noise = OUNoise(action_size, random_seed)
+        self.noise = GaussNoise(action_size, random_seed)
         self.noise_level1_reported = False
         self.noise_level2_reported = False
 
@@ -173,9 +174,9 @@ class Maddpg:
                     n = self.noise.sample() * self.noise_scale
                     action += n * self.noise_mult
                     self.noise_mult *= self.noise_decay
-                    if self.noise_mult < 0.2:
+                    if self.noise_mult < 0.1:
                         if not self.noise_level1_reported:
-                            print("\n* noise mult = 0.2")
+                            print("\n* noise mult = 0.1")
                             self.noise_level1_reported = True
                         if self.noise_mult < 0.0005:
                             self.noise_mult = 0.0005
@@ -377,17 +378,17 @@ class Maddpg:
            For info on file structure, see the description of restore_checkpoint(), below.
         """
 
-        # TODO: next mod of checkpoint structure, add a pedigree indicator to it
-
         checkpoint = {}
+        checkpoint["version"] = 4
         for i in range(self.num_agents):
             key_a = "actor{}".format(i)
             key_oa = "optimizer_actor{}".format(i)
             checkpoint[key_a] = self.actor_policy[i].state_dict()
             checkpoint[key_oa] = self.actor_optimizer[i].state_dict()
-
-        checkpoint["critic"] = self.critic_policy.state_dict()
-        checkpoint["optimizer_critic"] = self.critic_optimizer.state_dict()
+            key_c = "critic{}".format(i)
+            key_oc = "optimizer_critic{}".format(i)
+            checkpoint[key_c] = self.critic_policy[i].state_dict()
+            checkpoint[key_oc] = self.critic_optimizer[i].state_dict()
 
         # TODO: figure out how to store the buffer also (error on attribute lookup)
         #checkpoint["replay_buffer"] = self.memory
@@ -410,7 +411,8 @@ class Maddpg:
                                      0 = current (same as last value on this list)
                                      1 = original (configs 1-26, with multiple files)
                                      2 = configs 27-30, with a single file
-                                     3 = configs 31-present, with single critic network
+                                     3 = configs 31-42, with single critic network
+                                     4 = configs 43-present, with dual critics
 
                Assumes checkpoint filenames are all <tag>.<run>_[networkname_]<episode>.pt
                where networkname is used only for legacy formats, as those have separate
@@ -419,13 +421,16 @@ class Maddpg:
                is just that network.  There is no optimizer or replay buffer stored.  New
                checkpoints are saved as a single file for the entire model, which is
                structured as a dictionary containing the following fields:
+                 version
                  actor0
                  actor1
                  optimizer_actor0
                  optimizer_actor1
-                 critic
-                 optimizer_critic
-               Each field holds a state_dict.
+                 critic0
+                 critic1
+                 optimizer_critic0
+                 optimizer_critic1
+               Each field except "version" holds a state_dict. Version is an integer.
         """
 
         #---------- load gen 1/2 checkpoints (generated prior to config 27)
@@ -435,9 +440,9 @@ class Maddpg:
                   "architecture is incompatible with these checkpoint files.\n")
 
 
-        #----------- load gen 3 checkpoints (starting with config 31)
+        #----------- load gen 3 checkpoints (starting with config 31 through config 42)
 
-        elif pedigree == 3  or  pedigree == 0:
+        elif pedigree == 3:
 
             filename = "{}{}_{}.pt".format(path_root, tag, episode)
             checkpoint = torch.load(filename)
@@ -452,6 +457,25 @@ class Maddpg:
             self.critic_optimizer.load_state_dict(checkpoint["optimizer_critic"])
             #self.memory = checkpoint["replay_buffer"]
             print("Checkpoint loaded for {}, episode {}".format(tag, episode))
+
+        #---------- load gen 4 checkpoints (configs 43-present)
+
+        elif pedigree == 4  or  pedigree == 0:
+
+            filename = "{}{}_{}.pt".format(path_root, tag, episode)
+            checkpoint = torch.load(filename)
+
+            for i in range(self.num_agents):
+                key_a = "actor{}".format(i)
+                key_oa = "optimizer_actor{}".format(i)
+                self.actor_policy[i].load_state_dict(checkpoint[key_a])
+                self.actor_optimizer[i].load_state_dict(checkpoint[key_oa])
+                key_c = "critic{}".format(i)
+                key_oc = "optimizer_critic{}".format(i)
+                self.critic_policy[i].load_state_dict(checkpoint["critic"])
+                self.critic_optimizer[i].load_state_dict(checkpoint["optimizer_critic"])
+                #self.memory = checkpoint["replay_buffer"]
+                print("Checkpoint v4 loaded for {}, episode {}".format(tag, episode))
 
         else:
             print("\n\n///// WARNING: restore of unknown checkpoint pedigree {} was requested.")

@@ -1,6 +1,4 @@
-# Defines an agent that uses the DDPG algorithm.
-#
-# This code is a copy of the code used for my continuous control (Reacher) project.
+# Generates noise profile based on the Ornstein-Uhlenbeck algorithm.
 #
 # This code is based on code provided by Udacity instructor staff
 # for the DRL nanodegree program.
