@@ -283,23 +283,26 @@ class Maddpg:
         all_agents_states = obs.view(self.batch_size, -1).to(device)
         all_agents_actions = actions.view(self.batch_size, -1).to(device)
 
-        # update each agent individually
+        #---------- use the current actors to compute action data
+
+        # need to do this for all agents before updating the critics, since critics see all
         for agent in range(self.num_agents):
 
-            # for each agent use its actor networks to compute action data
+            # grab next state vectors and use this agent's target network to predict next actions
             target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float) \
                                .to(device)
-            actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
-
-            # grab next state vectors and use this agent's target network to predict next actions
             ns = next_obs[:, agent, :].to(device)
             target_actions[:, agent*self.action_size:(agent+1)*self.action_size] = \
                            self.actor_target[agent](ns)
 
             # now get current state vector and use this agent's current policy to get current action
+            actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
             s = obs[:, agent, :].to(device)
             actions_pred[:, agent*self.action_size:(agent+1)*self.action_size] = \
                            self.actor_policy[agent](s)
+
+        # now loop through all agents to actually update the networks
+        for agent in range(self.num_agents):
 
             #---------- update critic networks
 
