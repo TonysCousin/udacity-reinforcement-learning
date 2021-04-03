@@ -317,8 +317,9 @@ class Maddpg:
             critic_loss = F.mse_loss(q_expected, q_targets)
 
             # Minimize the loss
+            retain_graph = agent < self.num_agents - 1 # retain for all except last agent
             self.critic_optimizer[agent].zero_grad()
-            critic_loss.backward()
+            critic_loss.backward(retain_graph=retain_graph)
             torch.nn.utils.clip_grad_norm_(self.critic_policy[agent].parameters(), 1)
             self.critic_optimizer[agent].step()
 
@@ -329,7 +330,7 @@ class Maddpg:
 
             # Minimize the loss
             self.actor_optimizer[agent].zero_grad()
-            actor_loss.backward()
+            actor_loss.backward(retain_graph=retain_graph)
             torch.nn.utils.clip_grad_norm_(self.actor_policy[agent].parameters(), 1)
             self.actor_optimizer[agent].step()
 
