@@ -65,7 +65,7 @@ class ReplayBuffer:
             # else (some priming experiences still exist)
             else:
 
-                # reduce the prime count
+                # reduce the prime count since one will be pushed off the left end
                 self.num_primes -= 1
 
         # if number of entries < prime size, then count the entry as a prime

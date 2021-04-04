@@ -1,20 +1,9 @@
-# -------- HEY JOHN:
-
-
-
-# UPDATE THE DESCRIPTION HERE...
-
-
 # Implements the MADDPG algorithm for multiple agents, where each agent has its own
-# actor, but all agents effectively share a critic.  The critic in each agent
-# is updated with all actions and observations from all agents, so
-# each agent's critic is being simultaneously updated the same way.  This is
-# not the most efficient way to do it, but for learning the basic approach it
-# is fine.  A future enhancement would be to break out a common critic object
-# that is truly separate from all actors.
-#
-# This code is heavily inspired by
-# https://github.com/and-buk/Udacity-DRLND/blob/master/p_collaboration_and_competition/MADDPG.py
+# actor and critic.  The critic in each agent, however, is updated with all actions and
+# observations from all agents, so each agent's critic is being simultaneously updated
+# the same way.  But it is not possible to have a signle critic network that is shared,
+# because each actor's loss is computed with its critic, and so backpropagation of each
+# actor loss depends on the gradients in each individual critic network.
 
 import numpy as np
 import torch
@@ -24,11 +13,13 @@ from torch.optim.lr_scheduler import StepLR
 from numpy.random import default_rng
 import copy
 
-from model         import Actor, Critic
-from ou_noise      import OUNoise
-from replay_buffer import ReplayBuffer
+from model          import Actor, Critic
+#from ou_noise      import OUNoise
+from gaussian_noise import GaussNoise
+from replay_buffer  import ReplayBuffer
 
 # initial probability of keeping "bad" episodes (until enough exist to start learning)
+# (no longer used as long as replay buffer priming is occurring)
 BAD_STEP_KEEP_PROB_INIT = 0.04
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -105,11 +96,15 @@ class Maddpg:
                                    random_seed)
         self.learning_underway = False
 
-        # create the actor networks
+        # create the actor & critic NNs
         self.actor_policy = []
         self.actor_target = []
         self.actor_optimizer = []
         self.actor_scheduler = []
+        self.critic_policy = []
+        self.critic_target = []
+        self.critic_optimizer = []
+        self.critic_scheduler = []
         for i in range(num_agents):
             self.actor_policy.append(Actor(state_size, action_size, random_seed,
                                            fc1_units=layer1_units, fc2_units=layer2_units) \
@@ -123,20 +118,20 @@ class Maddpg:
                                                step_size=self.lr_anneal_freq,
                                                gamma=self.lr_anneal_mult))
 
-        # create the common critic networks
-        self.critic_policy = Critic(num_agents*state_size, num_agents*action_size,
-                                    random_seed, fcs1_units=layer1_units,
-                                    fc2_units=layer2_units).to(device)
-        self.critic_target = Critic(num_agents*state_size, num_agents*action_size,
-                                    random_seed, fcs1_units=layer1_units,
-                                    fc2_units=layer2_units).to(device)
-        self.critic_optimizer = optim.Adam(self.critic_policy.parameters(), lr=lr_critic,
-                                           weight_decay=weight_decay)
-        self.critic_scheduler = StepLR(self.critic_optimizer, step_size=self.lr_anneal_freq,
-                                       gamma=self.lr_anneal_mult)
+            self.critic_policy.append(Critic(num_agents*state_size, num_agents*action_size,
+                                             random_seed, fcs1_units=layer1_units,
+                                             fc2_units=layer2_units).to(device))
+            self.critic_target.append(Critic(num_agents*state_size, num_agents*action_size,
+                                             random_seed, fcs1_units=layer1_units,
+                                             fc2_units=layer2_units).to(device))
+            self.critic_optimizer.append(optim.Adam(self.critic_policy[i].parameters(), lr=lr_critic,
+                                                    weight_decay=weight_decay))
+            self.critic_scheduler.append(StepLR(self.critic_optimizer[i],
+                                                step_size=self.lr_anneal_freq,
+                                                gamma=self.lr_anneal_mult))
 
         # noise process & latches for decay reporting
-        self.noise = OUNoise(action_size, random_seed)
+        self.noise = GaussNoise(action_size, random_seed)
         self.noise_level1_reported = False
         self.noise_level2_reported = False
 
@@ -179,9 +174,9 @@ class Maddpg:
                     n = self.noise.sample() * self.noise_scale
                     action += n * self.noise_mult
                     self.noise_mult *= self.noise_decay
-                    if self.noise_mult < 0.2:
+                    if self.noise_mult < 0.1:
                         if not self.noise_level1_reported:
-                            print("\n* noise mult = 0.2")
+                            print("\n* noise mult = 0.1")
                             self.noise_level1_reported = True
                         if self.noise_mult < 0.0005:
                             self.noise_mult = 0.0005
@@ -245,15 +240,15 @@ class Maddpg:
             if any(dones):
                 for i in range(self.num_agents):
                     self.actor_scheduler[i].step()
-                self.critic_scheduler.step()
-                clr = self.critic_scheduler.get_lr()[0]
-                if clr < self.prev_clr:
-                    if clr < 1.0e-7:
-                        print("\n*** CAUTION: low learning rates: {:.7f}, {:.7f}" \
-                              .format(self.actor_scheduler[0].get_lr()[0], clr))
-                    #print("\n* LR annealed: new actor = {:.7f}, critic = {:.7f}" \
-                    #      .format(self.actor_scheduler[0].get_lr()[0], clr))
-                    self.prev_clr = clr
+                    self.critic_scheduler[i].step()
+                    clr = self.critic_scheduler[i].get_lr()[0]
+                    if clr < self.prev_clr: # assumes both critics have same LR schedule
+                        if clr < 1.0e-7:
+                            print("\n*** CAUTION: low learning rates: {:.7f}, {:.7f}" \
+                                  .format(self.actor_scheduler[0].get_lr()[0], clr))
+                        #print("\n* LR annealed: new actor = {:.7f}, critic = {:.7f}" \
+                        #      .format(self.actor_scheduler[0].get_lr()[0], clr))
+                        self.prev_clr = clr
 
 
     def learn(self, experiences):
@@ -271,68 +266,78 @@ class Maddpg:
                      x is 1 for r and done
         """
 
+        #---------- prepare the incoming data
+
         # extract the elements of the replayed batch of experiences
         obs, actions, rewards, next_obs, dones = experiences
-
-        #---------- update critic network
-
-        # grab the batch of next state vectors for each actor and feed them into the
-        # target network to get predicted next actions (each row is actions of all actors)
-        target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float) \
-                           .to(device)
-        for i in range(self.num_agents):
-            s = next_obs[:, i, :].to(device)
-            target_actions[:, i*self.action_size:(i+1)*self.action_size] = \
-                          self.actor_target[i](s)
 
         # create a next_states tensor [b, x] where each row represents the states
         # of all agents
         next_states = next_obs.view(self.batch_size, -1).to(device)
 
-        # compute the Q values for the next states/actions from the target model
-        q_targets_next = self.critic_target(next_states, target_actions).squeeze()
-
-        # Compute Q targets for current states (y_i) for this agent
-        reward = rewards.max(dim=1)[0].squeeze().to(device) #sum rewards from both agents
+        # create a reward tensor & a done tensor that represent both agents
+        reward = rewards.max(dim=1)[0].squeeze().to(device) #max reward achieved by either agent
         done = dones.max(dim=1)[0].squeeze().to(device)     #if either agent indicates done
-        q_targets = reward + self.gamma*q_targets_next*(1 - done)
 
         # reshape the observations & actions so that all agents are represented on each row
         all_agents_states = obs.view(self.batch_size, -1).to(device)
         all_agents_actions = actions.view(self.batch_size, -1).to(device)
 
-        # Compute critic loss
-        q_expected = self.critic_policy(all_agents_states, all_agents_actions)
-        critic_loss = F.mse_loss(q_expected, q_targets)
+        #---------- use the current actors to compute action data
 
-        # Minimize the loss
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic_policy.parameters(), 1)
-        self.critic_optimizer.step()
+        # need to do this for all agents before updating the critics, since critics see all
+        for agent in range(self.num_agents):
 
-        #---------- update actor networks
+            # grab next state vectors and use this agent's target network to predict next actions
+            target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float) \
+                               .to(device)
+            ns = next_obs[:, agent, :].to(device)
+            target_actions[:, agent*self.action_size:(agent+1)*self.action_size] = \
+                           self.actor_target[agent](ns)
 
-        # Compute actor loss
-        actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
-        for i in range(self.num_agents):
-            s = obs[:, i, :].to(device)
-            actions_pred[:, i*self.action_size:(i+1)*self.action_size] = self.actor_policy[i](s)
-        actor_loss = -self.critic_policy(all_agents_states, actions_pred).mean()
+            # now get current state vector and use this agent's current policy to get current action
+            actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
+            s = obs[:, agent, :].to(device)
+            actions_pred[:, agent*self.action_size:(agent+1)*self.action_size] = \
+                           self.actor_policy[agent](s)
 
-        # Minimize the loss
-        for i in range(self.num_agents):
-            self.actor_optimizer[i].zero_grad()
-            # backpropagate, but clear its buffers only on final loop iteration
-            actor_loss.backward(retain_graph=(i < self.num_agents-1))
-            torch.nn.utils.clip_grad_norm_(self.actor_policy[i].parameters(), 1)
-            self.actor_optimizer[i].step()
+        # now loop through all agents to actually update the networks
+        for agent in range(self.num_agents):
 
-        #---------- update target networks
+            #---------- update critic networks
 
-        for i in range(self.num_agents):
-            self.soft_update(self.actor_policy[i], self.actor_target[i])
-        self.soft_update(self.critic_policy, self.critic_target)
+            # compute the Q values for the next states/actions from the target model
+            q_targets_next = self.critic_target[agent](next_states, target_actions).squeeze()
+
+            # Compute Q targets for current states (y_i) for this agent
+            q_targets = reward + self.gamma*q_targets_next*(1 - done)
+
+            # Compute critic loss
+            q_expected = self.critic_policy[agent](all_agents_states, all_agents_actions)
+            critic_loss = F.mse_loss(q_expected, q_targets)
+
+            # Minimize the loss
+            retain_graph = agent < self.num_agents - 1 # retain for all except last agent
+            self.critic_optimizer[agent].zero_grad()
+            critic_loss.backward(retain_graph=retain_graph)
+            torch.nn.utils.clip_grad_norm_(self.critic_policy[agent].parameters(), 1)
+            self.critic_optimizer[agent].step()
+
+            #---------- update actor networks
+
+            # Compute actor loss
+            actor_loss = -self.critic_policy[agent](all_agents_states, actions_pred).mean()
+
+            # Minimize the loss
+            self.actor_optimizer[agent].zero_grad()
+            actor_loss.backward(retain_graph=retain_graph)
+            torch.nn.utils.clip_grad_norm_(self.actor_policy[agent].parameters(), 1)
+            self.actor_optimizer[agent].step()
+
+            #---------- update target networks
+
+            self.soft_update(self.actor_policy[agent], self.actor_target[agent])
+            self.soft_update(self.critic_policy[agent], self.critic_target[agent])
 
 
     def soft_update(self, policy_model, target_model):
@@ -377,17 +382,17 @@ class Maddpg:
            For info on file structure, see the description of restore_checkpoint(), below.
         """
 
-        # TODO: next mod of checkpoint structure, add a pedigree indicator to it
-
         checkpoint = {}
+        checkpoint["version"] = 4
         for i in range(self.num_agents):
             key_a = "actor{}".format(i)
             key_oa = "optimizer_actor{}".format(i)
             checkpoint[key_a] = self.actor_policy[i].state_dict()
             checkpoint[key_oa] = self.actor_optimizer[i].state_dict()
-
-        checkpoint["critic"] = self.critic_policy.state_dict()
-        checkpoint["optimizer_critic"] = self.critic_optimizer.state_dict()
+            key_c = "critic{}".format(i)
+            key_oc = "optimizer_critic{}".format(i)
+            checkpoint[key_c] = self.critic_policy[i].state_dict()
+            checkpoint[key_oc] = self.critic_optimizer[i].state_dict()
 
         # TODO: figure out how to store the buffer also (error on attribute lookup)
         #checkpoint["replay_buffer"] = self.memory
@@ -410,7 +415,8 @@ class Maddpg:
                                      0 = current (same as last value on this list)
                                      1 = original (configs 1-26, with multiple files)
                                      2 = configs 27-30, with a single file
-                                     3 = configs 31-present, with single critic network
+                                     3 = configs 31-42, with single critic network
+                                     4 = configs 43-present, with dual critics
 
                Assumes checkpoint filenames are all <tag>.<run>_[networkname_]<episode>.pt
                where networkname is used only for legacy formats, as those have separate
@@ -419,13 +425,16 @@ class Maddpg:
                is just that network.  There is no optimizer or replay buffer stored.  New
                checkpoints are saved as a single file for the entire model, which is
                structured as a dictionary containing the following fields:
+                 version
                  actor0
                  actor1
                  optimizer_actor0
                  optimizer_actor1
-                 critic
-                 optimizer_critic
-               Each field holds a state_dict.
+                 critic0
+                 critic1
+                 optimizer_critic0
+                 optimizer_critic1
+               Each field except "version" holds a state_dict. Version is an integer.
         """
 
         #---------- load gen 1/2 checkpoints (generated prior to config 27)
@@ -435,9 +444,9 @@ class Maddpg:
                   "architecture is incompatible with these checkpoint files.\n")
 
 
-        #----------- load gen 3 checkpoints (starting with config 31)
+        #----------- load gen 3 checkpoints (starting with config 31 through config 42)
 
-        elif pedigree == 3  or  pedigree == 0:
+        elif pedigree == 3:
 
             filename = "{}{}_{}.pt".format(path_root, tag, episode)
             checkpoint = torch.load(filename)
@@ -452,6 +461,25 @@ class Maddpg:
             self.critic_optimizer.load_state_dict(checkpoint["optimizer_critic"])
             #self.memory = checkpoint["replay_buffer"]
             print("Checkpoint loaded for {}, episode {}".format(tag, episode))
+
+        #---------- load gen 4 checkpoints (configs 43-present)
+
+        elif pedigree == 4  or  pedigree == 0:
+
+            filename = "{}{}_{}.pt".format(path_root, tag, episode)
+            checkpoint = torch.load(filename)
+
+            for i in range(self.num_agents):
+                key_a = "actor{}".format(i)
+                key_oa = "optimizer_actor{}".format(i)
+                self.actor_policy[i].load_state_dict(checkpoint[key_a])
+                self.actor_optimizer[i].load_state_dict(checkpoint[key_oa])
+                key_c = "critic{}".format(i)
+                key_oc = "optimizer_critic{}".format(i)
+                self.critic_policy[i].load_state_dict(checkpoint["critic"])
+                self.critic_optimizer[i].load_state_dict(checkpoint["optimizer_critic"])
+                #self.memory = checkpoint["replay_buffer"]
+                print("Checkpoint v4 loaded for {}, episode {}".format(tag, episode))
 
         else:
             print("\n\n///// WARNING: restore of unknown checkpoint pedigree {} was requested.")

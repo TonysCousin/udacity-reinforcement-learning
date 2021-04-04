@@ -10,6 +10,7 @@ from maddpg      import Maddpg
 
 AVG_SCORE_EXTENT = 100 #number of episodes over which running average scores are computed
 CHECKPOINT_PATH = "checkpoint/" #can be empty string, but if a dir is named, needs trailing '/'
+ABORT_EPISODE = 4000
 
 
 def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max_time_steps=100,
@@ -48,8 +49,9 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
     next_states = np.ndarray((num_agents, state_size))
     rewards = []
     dones = []
-    scores = [] # collects final score from every episode
-    avg_scores = [] # collects running avg score (over prev 100 eps) at each episode
+    # collect raw & running avg scores (over 100 episodes) at each episode
+    scores = []
+    avg_scores = []
     sum_steps = 0 #accumulates number of time steps exercised
     max_steps_experienced = 0
     recent_scores = deque(maxlen=AVG_SCORE_EXTENT)
@@ -67,7 +69,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
         if any(dones):
             env_info = env.reset(train_mode=True)[brain_name]
             states = env_info.vector_observations #returns ndarray(2, state_size)
-    print("\n")
+    print("!\n")
 
 
     # loop on episodes for training
@@ -97,6 +99,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
 
         # determine epoch duration and estimate remaining time
         current_time = time.perf_counter()
+        rem_time = 0.0
         if start_time > 0:
             timed_episodes = e - starting_episode + 1
             avg_duration = (current_time - start_time) / timed_episodes / 60.0 #minutes
@@ -107,10 +110,14 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
             avg_duration = 1.0 #avoids divide-by-zero
             time_est_msg = "???"
 
-        # update score bookkeeping, report status and decide if training is complete
+        # update score bookkeeping, report status
         scores.append(score)
         recent_scores.append(score)
-        avg_score = np.mean(recent_scores)
+        # don't compute avg score until several episodes have completed to avoid a meaningless
+        # spike near the very beginning
+        avg_score = 0.0
+        if e > 50:
+            avg_score = np.mean(recent_scores)
         max_recent = np.max(recent_scores)
         avg_scores.append(avg_score)
         mem_stats = maddpg.get_memory_stats() #element 0 is total size, 1 is num good experiences
@@ -131,11 +138,19 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
             if e % 100 < 5:
                 time.sleep(1) #allow time to view the Unity window
 
+        # if we have met the winning criteria, save a checkpoint and terminate
         if e > 100  and  avg_score >= winning_score:
             print("\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}"
                   .format(e, avg_score))
             maddpg.save_checkpoint(CHECKPOINT_PATH, run_name, e)
             break
+
+        # if this solution is clearly going nowhere, then abort early
+        if e > ABORT_EPISODE:
+            hit_rate = float(mem_stats[1]) / e
+            if hit_rate < 0.01  or  (rem_time > 1.0  and  hit_rate < 0.05):
+                print("\n* Aborting due to inadequate progress.")
+                break
 
     print("\nAvg/max time steps/episode = {:.1f}/{:d}"
           .format(float(sum_steps)/float(max_episodes-starting_episode),
