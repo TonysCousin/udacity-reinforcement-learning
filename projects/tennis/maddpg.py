@@ -275,9 +275,10 @@ class Maddpg:
         # of all agents
         next_states = next_obs.view(self.batch_size, -1).to(device)
 
-        # create a reward tensor & a done tensor that represent both agents
-        reward = rewards.max(dim=1)[0].squeeze().to(device) #max reward achieved by either agent
-        done = dones.max(dim=1)[0].squeeze().to(device)     #if either agent indicates done
+        # remove the unused dimension from the rewards & dones tensors; allow Q calculation to
+        # use differing values of these two for each agent, since their situations may differ
+        reward = rewards.squeeze().to(device)
+        done = dones.squeeze().to(device)
 
         # reshape the observations & actions so that all agents are represented on each row
         all_agents_states = obs.view(self.batch_size, -1).to(device)
@@ -285,18 +286,19 @@ class Maddpg:
 
         #---------- use the current actors to compute action data
 
+        target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float) \
+                               .to(device)
+        actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
+
         # need to do this for all agents before updating the critics, since critics see all
         for agent in range(self.num_agents):
 
             # grab next state vectors and use this agent's target network to predict next actions
-            target_actions = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float) \
-                               .to(device)
             ns = next_obs[:, agent, :].to(device)
             target_actions[:, agent*self.action_size:(agent+1)*self.action_size] = \
                            self.actor_target[agent](ns)
 
             # now get current state vector and use this agent's current policy to get current action
-            actions_pred = torch.zeros(self.batch_size, 2*self.action_size, dtype=torch.float)
             s = obs[:, agent, :].to(device)
             actions_pred[:, agent*self.action_size:(agent+1)*self.action_size] = \
                            self.actor_policy[agent](s)
@@ -310,17 +312,16 @@ class Maddpg:
             q_targets_next = self.critic_target[agent](next_states, target_actions).squeeze()
 
             # Compute Q targets for current states (y_i) for this agent
-            q_targets = reward + self.gamma*q_targets_next*(1 - done)
+            q_targets = reward[:, agent] + self.gamma*q_targets_next*(1 - done[:, agent])
 
             # Compute critic loss
-            q_expected = self.critic_policy[agent](all_agents_states, all_agents_actions)
-            critic_loss = F.mse_loss(q_expected, q_targets)
+            q_expected = self.critic_policy[agent](all_agents_states, all_agents_actions).squeeze()
+            critic_loss = F.mse_loss(q_expected, q_targets.detach())
 
             # Minimize the loss
-            retain_graph = agent < self.num_agents - 1 # retain for all except last agent
             self.critic_optimizer[agent].zero_grad()
-            critic_loss.backward(retain_graph=retain_graph)
-            torch.nn.utils.clip_grad_norm_(self.critic_policy[agent].parameters(), 1)
+            critic_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.critic_policy[agent].parameters(), 1.0)
             self.critic_optimizer[agent].step()
 
             #---------- update actor networks
@@ -329,9 +330,10 @@ class Maddpg:
             actor_loss = -self.critic_policy[agent](all_agents_states, actions_pred).mean()
 
             # Minimize the loss
+            retain_graph = agent < self.num_agents - 1 # retain for all except last agent
             self.actor_optimizer[agent].zero_grad()
             actor_loss.backward(retain_graph=retain_graph)
-            torch.nn.utils.clip_grad_norm_(self.actor_policy[agent].parameters(), 1)
+            torch.nn.utils.clip_grad_norm_(self.actor_policy[agent].parameters(), 1.0)
             self.actor_optimizer[agent].step()
 
             #---------- update target networks
