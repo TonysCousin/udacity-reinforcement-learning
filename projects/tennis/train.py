@@ -97,7 +97,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
                     max_steps_experienced = i
                 break
 
-        # determine epoch duration and estimate remaining time
+        # determine episode duration and estimate remaining time
         current_time = time.perf_counter()
         rem_time = 0.0
         if start_time > 0:
@@ -138,7 +138,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
             if e % 100 < 5:
                 time.sleep(1) #allow time to view the Unity window
 
-        # if we have met the winning criteria, save a checkpoint and terminate
+        # if we have met the winning criterion, save a checkpoint and terminate
         if e > 100  and  avg_score >= winning_score:
             print("\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}"
                   .format(e, avg_score))

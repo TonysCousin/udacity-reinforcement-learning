@@ -1,62 +1,80 @@
-[//]: # (Image References)
+# Multi-Agent Cooperation/Competition Project (Tennis)
 
-[image1]: https://user-images.githubusercontent.com/10624937/42135623-e770e354-7d12-11e8-998d-29fc74429ca2.gif "Trained Agent"
-[image2]: https://user-images.githubusercontent.com/10624937/42135622-e55fb586-7d12-11e8-8a54-3c31da15a90a.gif "Soccer"
+![Tennis Game](Reacher-snapshot.png) JOHN FIX THIS!
+
+Within the Udacity Deep Reinforcement Learning nano-degree program, controling multiple agents in a cooperative or
+competetive environment is the third and final major
+project for students to build on their own.  The project is to build and train an agent using any policy-based techniques
+to control two players playing a game that, at first, looks like tennis.  There is one player (agent) on each side
+of the net, but they are actually cooperating, not competing.  The object is not to play the game of tennis, rather to
+hit the ball back and forth, keeping it in the air as long as possible.  
+
+## Scoring and Winning
+
+If a player misses the ball or hits it
+out of bounds, then that player receives a reward of -0.01 for that time step.  When a player makes a successful hit
+(the ball stays in bounds), that player receives a reward of +0.1.  Rewards are accumulated throughout an episode,
+which will last until the ball goes out of bounds or hits the ground, or until the maximum number of time steps is 
+reached.  The score of that episode is the max of each agent's accumulated reward (one agent may have a few more hits
+than the other, such as hitting it vertically to itself).
+
+The agents are considered successfully trained when they can play 100 consecutive episodes with an average score of 0.5 or greater.
+
+## The Environment
+
+The game is played using the Unity ML-Agents gaming framework, and uses a custom environment built by Udacity instructors.  The game is a 2D tennis court.  
+The agents can move horizontally toward the net and away from it, within their court bounds, and they can also move their racquet up and down.  
+The angle of the racquet is fixed.
+At each time step the environment returns a state vector comprised of 24 elements for each agent, describing that agent's point of view on the game.  It contains X and Y positions and velocities of both the agent and the ball over three consecutive time steps (8 elements for each time step).
+Action vectors input to the environment have two elements for each agent, representing its desired horizontal and vertical motion.
+Action values must be in the range [-1, 1].
+
+## Solution
+JOHN - fill in the report link
+
+I used the Multi-Agent DDPG algorithm to train the agents.  See the [project report](XXX) for details.
+Note that this is a classroom project, and does not claim to be production-quality code.  
+I got a huge education out of building and running it, but that is where its purpose ends.
+I hope you will find it an interesting and valuable reference to build upon or learn from.
+
+## Installation
 
 
-# Project 3: Collaboration and Competition
+## Run the Code
+JOHN - include video clip here
 
-### Introduction
+----- REPLACE BELOW -----
 
-For this project, you will work with the [Tennis](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Learning-Environment-Examples.md#tennis) environment.
+I use the DDPG algorithm to train the agent.  The project report with additional details can be found in the Jupyter notebook, _Report.ipynb_ , located in this project directory.
 
-![Trained Agent][image1]
+### To use this code
 
-In this environment, two agents control rackets to bounce a ball over a net. If an agent hits the ball over the net, it receives a reward of +0.1.  If an agent lets a ball hit the ground or hits the ball out of bounds, it receives a reward of -0.01.  Thus, the goal of each agent is to keep the ball in play.
+The environment needed to run the code can be set up in a few minutes.  Beyond installing Jupyter Notebook, here are the steps
+(use of conda is optional, but Python 3.6 is mandatory):
+```
+conda create --name drlnd python=3.6
+conda activate drlnd
+```
 
-The observation space consists of 8 variables corresponding to the position and velocity of the ball and racket. Each agent receives its own, local observation.  Two continuous actions are available, corresponding to movement toward (or away from) the net, and jumping. 
+Next, pick a location to clone this repository, clone it, install its dependencies, and set up the Jupyter kernel:
+```
+cd <location>
+git clone https://github.com/TonysCousin/udacity-reacher.git .
+pip install .
+python -m ipykernel install --user --name drlnd --display-name "drlnd"
+```
+ 
+Finally, install the Unity ML-Agents environment pre-built for this project (which means you don't need to install Unity directly).
+Download the environment [from here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P2/Reacher/one_agent/Reacher_Linux.zip),
+place it in your project directory and unzip it.
 
-The task is episodic, and in order to solve the environment, your agents must get an average score of +0.5 (over 100 consecutive episodes, after taking the maximum over both agents). Specifically,
+Code for this project lives in two places within this directory.  The first is the Jupyter notebook,
+_cont-ctrl-project.ipynb_ , with the main logic in the flat files, `ddpg_agent.py` and `model.py`.
+Once these dependencies are in place, simply open the notebook, select the drlnd kernel, and
+run the entire notebook.  It will train the agent given the hyperparameters that appear in the code, and
+show a plot of its training history.
 
-- After each episode, we add up the rewards that each agent received (without discounting), to get a score for each agent. This yields 2 (potentially different) scores. We then take the maximum of these 2 scores.
-- This yields a single **score** for each episode.
+Also included in this repository are checkpoint files that hold the pre-trained models, one for the actor network
+and one for the critic network.  The final two cells in the notebook will read in these files and play an inference
+episode with the trained models.
 
-The environment is considered solved, when the average (over 100 episodes) of those **scores** is at least +0.5.
-
-### Getting Started
-
-1. Download the environment from one of the links below.  You need only select the environment that matches your operating system:
-    - Linux: [click here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Tennis/Tennis_Linux.zip)
-    - Mac OSX: [click here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Tennis/Tennis.app.zip)
-    - Windows (32-bit): [click here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Tennis/Tennis_Windows_x86.zip)
-    - Windows (64-bit): [click here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Tennis/Tennis_Windows_x86_64.zip)
-    
-    (_For Windows users_) Check out [this link](https://support.microsoft.com/en-us/help/827218/how-to-determine-whether-a-computer-is-running-a-32-bit-version-or-64) if you need help with determining if your computer is running a 32-bit version or 64-bit version of the Windows operating system.
-
-    (_For AWS_) If you'd like to train the agent on AWS (and have not [enabled a virtual screen](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Training-on-Amazon-Web-Service.md)), then please use [this link](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Tennis/Tennis_Linux_NoVis.zip) to obtain the "headless" version of the environment.  You will **not** be able to watch the agent without enabling a virtual screen, but you will be able to train the agent.  (_To watch the agent, you should follow the instructions to [enable a virtual screen](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Training-on-Amazon-Web-Service.md), and then download the environment for the **Linux** operating system above._)
-
-2. Place the file in the DRLND GitHub repository, in the `p3_collab-compet/` folder, and unzip (or decompress) the file. 
-
-### Instructions
-
-Follow the instructions in `Tennis.ipynb` to get started with training your own agent!  
-
-### (Optional) Challenge: Crawler Environment
-
-After you have successfully completed the project, you might like to solve the more difficult **Soccer** environment.
-
-![Soccer][image2]
-
-In this environment, the goal is to train a team of agents to play soccer.  
-
-You can read more about this environment in the ML-Agents GitHub [here](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Learning-Environment-Examples.md#soccer-twos).  To solve this harder task, you'll need to download a new Unity environment.  (**Note**: Udacity students should not submit a project with this new environment.)
-
-You need only select the environment that matches your operating system:
-- Linux: [click here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Soccer/Soccer_Linux.zip)
-- Mac OSX: [click here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Soccer/Soccer.app.zip)
-- Windows (32-bit): [click here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Soccer/Soccer_Windows_x86.zip)
-- Windows (64-bit): [click here](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Soccer/Soccer_Windows_x86_64.zip)
-
-Then, place the file in the `p3_collab-compet/` folder in the DRLND GitHub repository, and unzip (or decompress) the file.  Next, open `Soccer.ipynb` and follow the instructions to learn how to use the Python API to control the agent.
-
-(_For AWS_) If you'd like to train the agents on AWS (and have not [enabled a virtual screen](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Training-on-Amazon-Web-Service.md)), then please use [this link](https://s3-us-west-1.amazonaws.com/udacity-drlnd/P3/Soccer/Soccer_Linux_NoVis.zip) to obtain the "headless" version of the environment.  You will **not** be able to watch the agents without enabling a virtual screen, but you will be able to train the agents.  (_To watch the agents, you should follow the instructions to [enable a virtual screen](https://github.com/Unity-Technologies/ml-agents/blob/master/docs/Training-on-Amazon-Web-Service.md), and then download the environment for the **Linux** operating system above._)

@@ -1,6 +1,6 @@
 # Provides a fixed-size replay buffer (without true priority) for randomly sampling past
-# experiences. However, it recognizes experiences with positive rewards as valuable,
-# so will retain them when they have hit the head of the queue.
+# experiences. However, it recognizes experiences with large rewards as valuable,
+# so will retain them when they have hit the left end of the queue.
 # Assumes that the initial experiences added (until batch_size is reached) will be
 # random garbage to prime the buffer, and will allow these primes to be pushed off the
 # end, regardless of whether they have a good reward, and will not count them when
@@ -29,7 +29,7 @@ class ReplayBuffer:
 
         self.action_size = action_size
         self.buffer_size = buffer_size
-        self.memory = deque(maxlen=buffer_size)  # internal memory (deque)
+        self.memory = deque(maxlen=buffer_size)  #internal memory
         self.batch_size = batch_size
         self.prime_size = prime_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
