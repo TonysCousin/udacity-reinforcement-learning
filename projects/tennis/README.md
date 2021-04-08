@@ -42,6 +42,7 @@ I hope you will find it an interesting and valuable reference to build upon or l
 
 ## Run the Code
 JOHN - include video clip here
+[video](docs/Kazam__00001.mp4)
 
 ----- REPLACE BELOW -----
 

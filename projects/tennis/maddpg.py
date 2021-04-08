@@ -138,14 +138,15 @@ class Maddpg:
         self.noise.reset()
 
 
-    def act(self, states, add_noise=True):
-        """Computes the action of each agent. Initially, these actions are random,
-           to prime the replay buffer until at least one batch-full of experiences is
+    def act(self, states, is_inference=False, add_noise=True):
+        """Computes the action of each agent. During training, these actions are initially 
+           random, to prime the replay buffer until at least one batch-full of experiences is
            stored. At that point learning can begin. From then on, it uses each agent's
            current policy to generate its actions.
 
            Params:
                states (tuple of float tensors):  the state values for all agents
+               is_inferance (bool):              are we doing inference only (no learning)?
                add_noise (bool):                 should noise be added to the results?
 
            Return:  ndarray of actions taken by all agents
@@ -153,9 +154,9 @@ class Maddpg:
 
         actions = np.zeros((self.num_agents, self.action_size))
 
-        # if learning is underway (replay buffer is sufficiently populated), then compute
-        # actions based on the agent policies
-        if self.learning_underway:
+        # if learning is underway (replay buffer is sufficiently populated), or we are in
+        # inference mode, then compute actions based on the agent policies
+        if self.learning_underway  or  is_inference:
             for i in range(self.num_agents):
 
                 # get the raw action
