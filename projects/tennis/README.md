@@ -42,7 +42,7 @@ I hope you will find it an interesting and valuable reference to build upon or l
 
 ## Run the Code
 JOHN - include video clip here
-![video](docs/kazam2.mp4)
+![video](https://raw.githubusercontent.com/TonysCousin/udacity-reinforcement-learning/projects/tennis/docs/kazam2.mp4)
 
 ----- REPLACE BELOW -----
 
