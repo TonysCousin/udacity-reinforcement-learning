@@ -39,10 +39,14 @@ I hope you will find it an interesting and valuable reference to build upon or l
 
 ## Installation
 
-
 ## Run the Code
-JOHN - include video clip here
-![video](https://raw.githubusercontent.com/TonysCousin/udacity-reinforcement-learning/projects/tennis/docs/kazam2.mp4)
+Here's the original kazam2 mp4 clip:
+![video](https://user-images.githubusercontent.com/9048857/113957087-77e01580-97d3-11eb-8296-44fc46df13ee.mp4)
+
+Here's the cleaned up one:
+![clean](https://user-images.githubusercontent.com/9048857/113957535-41ef6100-97d4-11eb-9b2a-ea9cb0f134d8.mp4)
+
+
 
 ----- REPLACE BELOW -----
 
