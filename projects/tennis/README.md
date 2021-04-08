@@ -46,6 +46,10 @@ Here's the original kazam2 mp4 clip:
 Here's the cleaned up one:
 ![clean](https://user-images.githubusercontent.com/9048857/113957535-41ef6100-97d4-11eb-9b2a-ea9cb0f134d8.mp4)
 
+And here's the GIF version:
+
+![kazam2](https://user-images.githubusercontent.com/9048857/113958331-c1c9fb00-97d5-11eb-837e-d5dc2c53b64d.gif)
+
 
 
 ----- REPLACE BELOW -----
