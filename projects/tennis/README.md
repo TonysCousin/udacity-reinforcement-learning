@@ -1,6 +1,6 @@
 # Multi-Agent Cooperation/Competition Project (Tennis)
 
-![Tennis Game](Tennis_screenshot.png)
+![Tennis Game](docs/Tennis_screenshot.png)
 
 Within the Udacity Deep Reinforcement Learning nano-degree program, controling multiple agents in a cooperative or
 competetive environment is the third and final major
