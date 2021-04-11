@@ -2,17 +2,11 @@
 
 ![Tennis_trained](https://user-images.githubusercontent.com/9048857/114322523-9006ac00-9ad5-11eb-922d-82cd6067cd90.gif)
 
-Within the Udacity Deep Reinforcement Learning nano-degree program, controling multiple agents in a cooperative or
-competetive environment is the third and final major
-project for students to build on their own.  The project is to build and train an agent using any policy-based techniques
-to control two players playing a game that, at first, looks like tennis.  There is one player (agent) on each side
-of the net, but they are actually cooperating, not competing.  The object is not to play the game of tennis, rather to
-hit the ball back and forth, keeping it in the air as long as possible.  
+Within the Udacity Deep Reinforcement Learning nano-degree program, controling multiple agents in a cooperative or competetive environment is the third and final major project for students to build on their own.  The project is to build and train an agent using any policy-based techniques to control two players playing a game that, at first, looks like tennis.  There is one player (agent) on each side of the net, but they are actually cooperating, not competing.  The object is not to play the game of tennis, rather to hit the ball back and forth, keeping it in the air as long as possible.  
 
 ## Scoring and Winning
 
-If a player misses the ball or hits it
-out of bounds, then that player receives a reward of -0.01 for that time step.  When a player makes a successful hit
+If a player misses the ball or hits it out of bounds, then that player receives a reward of -0.01 for that time step.  When a player makes a successful hit
 (the ball stays in bounds), that player receives a reward of +0.1.  Rewards are accumulated throughout an episode,
 which will last until the ball goes out of bounds or hits the ground, or until the maximum number of time steps is 
 reached.  The score of that episode is the max of each agent's accumulated reward (one agent may have a few more hits
@@ -32,10 +26,7 @@ Action values must be in the range [-1, 1].
 ## Solution
 JOHN - fill in the report link
 
-I used the Multi-Agent DDPG algorithm to train the agents.  See the [project report](XXX) for details.
-Note that this is a classroom project, and does not claim to be production-quality code.  
-I got a huge education out of building and running it, but that is where its purpose ends.
-I hope you will find it an interesting and valuable reference to build upon or learn from.
+I used the Multi-Agent DDPG algorithm to train the agents.  See the [project report](docs/Report.md) for details. Note that this is a classroom project, and does not claim to be production-quality code. I got a huge education out of building and running it, but that is where its purpose ends. I hope you will find it an interesting and valuable reference to build upon or learn from.
 
 ## Installation
 
