@@ -1,6 +1,6 @@
 # Multi-Agent Cooperation/Competition Project (Tennis)
 
-![Tennis Game](docs/Tennis_screenshot.png)
+![Tennis_trained](https://user-images.githubusercontent.com/9048857/114322523-9006ac00-9ad5-11eb-922d-82cd6067cd90.gif)
 
 Within the Udacity Deep Reinforcement Learning nano-degree program, controling multiple agents in a cooperative or
 competetive environment is the third and final major
@@ -40,15 +40,6 @@ I hope you will find it an interesting and valuable reference to build upon or l
 ## Installation
 
 ## Run the Code
-Here's the original kazam2 mp4 clip:
-![video](https://user-images.githubusercontent.com/9048857/113957087-77e01580-97d3-11eb-8296-44fc46df13ee.mp4)
-
-Here's the cleaned up one:
-![clean](https://user-images.githubusercontent.com/9048857/113957535-41ef6100-97d4-11eb-9b2a-ea9cb0f134d8.mp4)
-
-And here's the GIF version:
-
-![kazam2](https://user-images.githubusercontent.com/9048857/113958331-c1c9fb00-97d5-11eb-837e-d5dc2c53b64d.gif)
 
 
 
