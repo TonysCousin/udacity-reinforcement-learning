@@ -31,7 +31,7 @@ class Maddpg:
                  batch_size=32, buffer_size=1000000, noise_decay=1.0, noise_scale=1.0,
                  buffer_prime_size=1000, learn_every=20, learn_iter=1, lr_actor=0.00001,
                  lr_critic=0.000001, lr_anneal_freq=2000, lr_anneal_mult=0.5, weight_decay=1.0e-5,
-                 gamma=0.99, tau=0.001, model_display_step=0):
+                 gamma=0.99, tau=0.001):
         """Initialize the one and only MADDPG manager.
 
         Params
@@ -59,8 +59,6 @@ class Maddpg:
             weight_decay (float): decay rate applied to each agent's critic network optimizer
             gamma (float):        future reward discount factor
             tau (float):          target network soft update rate
-            model_display_step (int): time step (through all episodes) on which NN weights are
-                                    to be printed; if <= 0 then no printing will occur
         """
 
         self.state_size = state_size
@@ -81,7 +79,6 @@ class Maddpg:
         self.weight_decay = weight_decay
         self.gamma = gamma
         self.tau = tau
-        self.model_display_step = model_display_step
 
         # initialize other internal things
         self.noise_mult = 1.0 # the multiplier that will get decayed
@@ -141,14 +138,15 @@ class Maddpg:
         self.noise.reset()
 
 
-    def act(self, states, add_noise=True):
-        """Computes the action of each agent. Initially, these actions are random,
-           to prime the replay buffer until at least one batch-full of experiences is
+    def act(self, states, is_inference=False, add_noise=True):
+        """Computes the action of each agent. During training, these actions are initially 
+           random, to prime the replay buffer until at least one batch-full of experiences is
            stored. At that point learning can begin. From then on, it uses each agent's
            current policy to generate its actions.
 
            Params:
                states (tuple of float tensors):  the state values for all agents
+               is_inferance (bool):              are we doing inference only (no learning)?
                add_noise (bool):                 should noise be added to the results?
 
            Return:  ndarray of actions taken by all agents
@@ -156,9 +154,9 @@ class Maddpg:
 
         actions = np.zeros((self.num_agents, self.action_size))
 
-        # if learning is underway (replay buffer is sufficiently populated), then compute
-        # actions based on the agent policies
-        if self.learning_underway:
+        # if learning is underway (replay buffer is sufficiently populated), or we are in
+        # inference mode, then compute actions based on the agent policies
+        if self.learning_underway  or  is_inference:
             for i in range(self.num_agents):
 
                 # get the raw action
@@ -182,7 +180,6 @@ class Maddpg:
                             if not self.noise_level2_reported:
                                 print("\n* noise mult = 0.0005")
                                 self.noise_level2_reported = True
-
 
                 actions[i, :] = np.clip(action, -1.0, 1.0)
 
@@ -450,11 +447,10 @@ class Maddpg:
                 self.actor_optimizer[i].load_state_dict(checkpoint[key_oa])
                 key_c = "critic{}".format(i)
                 key_oc = "optimizer_critic{}".format(i)
-                self.critic_policy[i].load_state_dict(checkpoint["critic"])
-                self.critic_optimizer[i].load_state_dict(checkpoint["optimizer_critic"])
+                self.critic_policy[i].load_state_dict(checkpoint[key_c])
+                self.critic_optimizer[i].load_state_dict(checkpoint[key_oc])
                 #self.memory = checkpoint["replay_buffer"]
-                print("Checkpoint v4 loaded for {}, episode {}".format(tag, episode))
+            print("Checkpoint v4 loaded for {}, episode {}".format(tag, episode))
 
         else:
             print("\n\n///// WARNING: restore of unknown checkpoint pedigree {} was requested.")
-

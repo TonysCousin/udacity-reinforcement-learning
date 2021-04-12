@@ -18,4 +18,5 @@ located in that subdirectory (`projects/continuous_ctrl`).
 
 ## Project 3
 
-(incomplete)
+The final project is to build a Multi-Agent Reinforcement Learning algorithm that trains two agents to cooperate in a tennis-like game.
+It is [described further here](projects/tennis/README.md) and is located in `projects/tennis`.

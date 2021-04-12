@@ -135,7 +135,7 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
 
         # if sleeping is chosen, then pause for viewing after selected episodes
         if sleeping:
-            if e % 100 < 5:
+            if e % 100 < 20:
                 time.sleep(1) #allow time to view the Unity window
 
         # if we have met the winning criterion, save a checkpoint and terminate
@@ -143,10 +143,13 @@ def train(maddpg, env, run_name="UNDEF", starting_episode=0, max_episodes=2, max
             print("\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}"
                   .format(e, avg_score))
             maddpg.save_checkpoint(CHECKPOINT_PATH, run_name, e)
+            print("\nMost recent individual episode scores:")
+            for j, sc in enumerate(recent_scores):
+                print("{:2d}: {:.2f}".format(j, sc))
             break
 
         # if this solution is clearly going nowhere, then abort early
-        if e > ABORT_EPISODE:
+        if e > starting_episode + ABORT_EPISODE:
             hit_rate = float(mem_stats[1]) / e
             if hit_rate < 0.01  or  (rem_time > 1.0  and  hit_rate < 0.05):
                 print("\n* Aborting due to inadequate progress.")
