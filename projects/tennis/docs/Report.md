@@ -12,7 +12,7 @@ This report describes the technical aspects of how it works.
 I used the Multi-Agent Deep Deterministic Policy gradient (MADDPG) algorithm to train the two bots.
 Whereas the original DDPG was intended for a single agent, it used an actor-critic approach.
 The actor neural network (NN) attempts to provide the agent's desired outputs (i.e. solving the problem at hand), based on observations of the environment.
-Meanwhile, the critic NN observes the environment as well, but also observes the actor's outputs, and attemts to learn an effective _Q function_ to describe the losses that tell the actor how close it is to the target.
+Meanwhile, the critic NN observes the environment as well, but also observes the actor's outputs, and attemts to learn an effective _Q function_ to describe the losses that tell the actor how close it is to the goal.
 Both the actor and the critic are instantiated twice; one embodies the actual policy that is being learned, and one acts as a "target", whose outputs become a reference to which the policy can be compared.
 To make this inherently unstable situation more tenable, the target NN's parameters are very slowly updated to move ever closer to those of the policy NN (whose parameters are also changing as learning evolves).
 A key training hyperparameter is the _tau_ value that controls the rate that the target moves toward the policy network.
@@ -23,7 +23,7 @@ As such, their comrades' actions may be poorly chosen, and therefore poor inputs
 This situation is called "non-stationarity", and is a major hurdle that causes instability in multi-agent training.
 The key that makes MADDPG stable and successful is that, while each agent's actor NN only observes the environment from that agent's point of view (i.e. it may not see the whole picture), each critic NN is fed the entire state of the whole system of systems.
 The critics have access to all state variables of all agents and of the world they operate in.
-This visibility helps them to "coach" their actors toward reasonable solutions in a more smooth approach.
+This visibility helps them to "coach" their actors toward reasonable solutions in a smoother approach.
 Since the critic networks are only used for training purposes, (they are not used in inference mode), this unnatural visibility is not "cheating".
 When trained agents are tested in an operational envrionment (inference mode) they will continue to function well with just their own local observations, as they did during training.
 MADDPG is described in detail [in this paper](https://arxiv.org/pdf/1706.02275.pdf).
@@ -55,11 +55,11 @@ The OU generator code is in the repo, and can be dropped in by changing two line
 I also added a learning rate scheduler for the actor NN and another for the critic NN, which enables annealing of the learning rate.
 Experimenting with this eventually confirmed that annealing is not needed, so the hyperparameters I've chosen render it inactive, but it could be used if desired.
 
-As is typical with reinforcement learning, in order to avoid temporal biases due to correlation between states of consecutive time steps, training relies on an experience replay buffer.
+As is typical with reinforcement learning, in order to avoid temporal biases due to correlation between states of consecutive time steps, training relies on randomized experience replay buffer.
 I began with a simple replay buffer (no prioritizing), but quickly observed that the vast majority of experiences (virtually all) resulted in negative reward.
 Thinking that learning would occur more quickly if the agents saw positive rewards, I modified the replay buffer to limit the number of negative experiences it stores.
 In addition, I added a "priming" feature to the replay buffer; the first N experiences it takes in are considered priming, and consist of experiences built entirely from random actions by the agents.
-A replay buffer needs to have at least buffer_size experiences stored before it can start serving batches for training, but this additionally requires that the priming quota be filled (which I set at 5000, substantially larger than the batch size of 256).
+A replay buffer needs to have at least batch_size experiences stored before it can start serving batches for training, but this additionally requires that the priming quota be filled (which I set at 5000, substantially larger than the batch size of 256).
 The driving concern here was that my early learning experiences only involved a very small range of motion of the racquets, and starting with a substantial set of training experiences that covered the full range of possible motion would help to force agents to explore "corner cases" more.
 
 ## Hyperparameters Used
@@ -83,12 +83,12 @@ I began using a random search algorithm to help explore the hyperparameter space
 
 Once all code was confirmed correct, and reasonable structure was in place, hyperparameter tuning led to several acceptable solutions.
 I chose the one I named M46.20 to be featured in this report, as its learning history looked a bit more robust than the others.
-Its NN paremeters are stored in the [checkpoint M46.20_1983.pt](checkpoint/M46/M46.20_1983.pt).
+Its NN paremeters are stored in the [checkpoint M46.20_1983.pt](../checkpoint/M46/M46.20_1983.pt).
 Its learning history is shown in the following two plots, the first being raw scores from each episode, and the second being the 100-point moving average score.
 
-![Raw scores](docs/M46.20_scores.png)
+![Raw scores](M46.20_scores.png)
 
-![Moving avg)(docs/M46.20_avg_score.png)
+![Moving avg](M46.20_avg_score.png)
 
 I used this checkpoint as the baseline for some additional training (stored in the checkpoint/M46X directory), which took the model to new heights - trained until the average reward (over 100 consecutive episodes) exceeded 1.0, twice the requirement for this project.
 This additional training performed very well and only took a few hundred extra episodes.
