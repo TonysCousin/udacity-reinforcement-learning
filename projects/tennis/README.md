@@ -11,7 +11,6 @@ If a player misses the ball or hits it out of bounds, then that player receives 
 which will last until the ball goes out of bounds or hits the ground, or until the maximum number of time steps is 
 reached.  The score of that episode is the max of each agent's accumulated reward (one agent may have a few more hits
 than the other, such as hitting it vertically to itself).
-
 The agents are considered successfully trained when they can play 100 consecutive episodes with an average score of 0.5 or greater.
 
 ## The Environment
@@ -35,13 +34,13 @@ This project uses a pre-built Unity ML-Agents envronment, which means it is unne
 
 After cloning this repo, cd into the project directory and run
 
-	`pip install .`
+`pip install .`
 
 ## Run the Code
 
 The main.py file contains the main program to run:
 
-	`python3.6 main.py`
+`python3.6 main.py`
 
 It will either run in training mode or inference mode.
 As delivered, it will run my solution model in inference mode as a demonstration.
@@ -50,22 +49,7 @@ Since training on this model was fairly difficult, and required a lot of explora
 Note that I have included a sample for how to set up for training, in _explore_example.py_ .
 You may want to use this as a starting point for more refined training.  Just run
 
-	`python3.6 explore_example.py`
+`python3.6 explore_example.py`
 
-
-
------ REPLACE BELOW -----
-
-
-### To use this code
-
-Code for this project lives in two places within this directory.  The first is the Jupyter notebook,
-_cont-ctrl-project.ipynb_ , with the main logic in the flat files, `ddpg_agent.py` and `model.py`.
-Once these dependencies are in place, simply open the notebook, select the drlnd kernel, and
-run the entire notebook.  It will train the agent given the hyperparameters that appear in the code, and
-show a plot of its training history.
-
-Also included in this repository are checkpoint files that hold the pre-trained models, one for the actor network
-and one for the critic network.  The final two cells in the notebook will read in these files and play an inference
-episode with the trained models.
+Checkpoint files are stored in the _checkpoint_ directory.  The solution that I have trained is in the _M46X_ subdirectory.
 
