@@ -2,7 +2,9 @@
 
 _4/11/2021_
 
-Within the Udacity Deep Reinforcement Learning nano-degree program, controling multiple agents in a cooperative or competetive environment is the third and final major project for students to build on their own.  The project is to build and train an agent using any policy-based techniques to control two players playing a game that, at first, looks like tennis.  There is one player (agent) on each side of the net, but they are actually cooperating, not competing.  The object is not to play the game of tennis, per se, rather to hit the ball back and forth, keeping it in the air as long as possible.
+Within the Udacity Deep Reinforcement Learning nano-degree program, controling multiple agents in a cooperative or competetive environment is the third and final major project for students to build on their own.
+Multi-Agent Reinforcement Learning (MARL) is one of the challenging topics in machine learning today.
+The project is to build and train a pair of agents using any policy-based techniques to control two players playing a game that, at first, looks like tennis.  There is one player (agent) on each side of the net, but they are actually cooperating, not competing.  The object is not to play the game of tennis, per se, rather to hit the ball back and forth, keeping it in the air as long as possible.
 
 [The project's README file](../README.md) describes how to install and run the code.
 This report describes the technical aspects of how it works.
@@ -98,4 +100,6 @@ This additional training performed very well and only took a few hundred extra e
 - Given the amount of time invested in this project, I did not have time to pursue the optional assignment that I really wanted to, training a pair of competing soccer teams.
 I will extend my multi-agent education by solving that problem as well.
 - It would be interesting to try using the TD3 training algorithm, which is supposed to be more stable due to avoiding an overestimation bias in the critic evaluation of the Q function.
+- The effect of noise in this training is still something I don't understand well.
+Doing some controlled experiments with the noise magnitude, decay rate, and type of generator would be useful for understanding how critical this component might be.
 - I also plan to begin extending these ideas into real world situations in my work with [cooperative driving automation](https://github.com/usdot-fhwa-stol/carma-platform).
