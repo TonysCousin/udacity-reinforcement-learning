@@ -16,7 +16,7 @@ This project uses the DDPG policy method to train a two-arm robot to follow a mo
 [It is described further here](projects/continous_ctrl/README.md), with all project files being
 located in that subdirectory (`projects/continuous_ctrl`).
 
-## Project 3
+## Project 3 - Multi-Agent Cooperation and Competition
 
 The final project is to build a Multi-Agent Reinforcement Learning algorithm that trains two agents to cooperate in a tennis-like game.
 It is [described further here](projects/tennis/README.md) and is located in `projects/tennis`.
